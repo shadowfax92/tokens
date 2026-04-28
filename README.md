@@ -21,7 +21,7 @@ You want to know how much you're burning on Claude Code and Codex without leavin
 
 <div align="center">
 
-![tokens dashboard](assets/dashboard.png)
+![tokens dashboard](assets/dashboard.svg)
 
 </div>
 
@@ -75,7 +75,7 @@ Add `-d` to surface the input / output / cache split for each tool:
 
 <div align="center">
 
-![tokens detailed](assets/dashboard-detailed.png)
+![tokens detailed](assets/dashboard-detailed.svg)
 
 </div>
 
@@ -85,7 +85,7 @@ Compact, scriptable output — pipe it into anything:
 
 <div align="center">
 
-![tokens today](assets/today.png)
+![tokens today](assets/today.svg)
 
 </div>
 
@@ -95,7 +95,7 @@ Compact, scriptable output — pipe it into anything:
 
 <div align="center">
 
-![tokens claude](assets/claude.png)
+![tokens claude](assets/claude.svg)
 
 </div>
 
@@ -105,7 +105,7 @@ Compact, scriptable output — pipe it into anything:
 
 <div align="center">
 
-![tokens growth](assets/growth.png)
+![tokens growth](assets/growth.svg)
 
 </div>
 
@@ -115,7 +115,7 @@ Compact, scriptable output — pipe it into anything:
 
 <div align="center">
 
-![tokens chart](assets/chart.png)
+![tokens chart](assets/chart.svg)
 
 </div>
 
