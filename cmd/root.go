@@ -204,19 +204,20 @@ func renderSparklines(data *ccusage.UsageData, today time.Time, window int) {
 }
 
 func fetchWithSpinner() *ccusage.FetchResult {
-	cached := !noCache
 	opts := ccusage.FetchOptions{
 		NoCache:  noCache,
 		CacheTTL: time.Duration(cfg.CacheTTLMinutes) * time.Minute,
 	}
 
-	if !jsonOutput && !cached {
-		render.Dim.Fprintln(os.Stderr, "Fetching usage data (this may take a few seconds)...")
+	if jsonOutput {
+		return ccusage.Fetch(opts)
 	}
 
+	stop := startSpinner("Fetching usage data from ccusage and @ccusage/codex...")
 	res := ccusage.Fetch(opts)
+	stop()
 
-	if !jsonOutput && !res.FromCache {
+	if !res.FromCache {
 		render.Dim.Fprintf(os.Stderr, "Fetched in %s.\n", humanizeDuration(res.FetchTook))
 	}
 	return res
