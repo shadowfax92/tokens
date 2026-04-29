@@ -279,6 +279,34 @@ func MonthTotals(entries []ccusage.DailyEntry, today time.Time) (thisMonth, last
 	return
 }
 
+func WindowTotals(entries []ccusage.DailyEntry, today time.Time, days int) (current, previous ccusage.DailyEntry) {
+	if days <= 0 {
+		return
+	}
+
+	currentStart := today.AddDate(0, 0, -(days - 1))
+	previousStart := currentStart.AddDate(0, 0, -days)
+	previousEnd := currentStart.AddDate(0, 0, -1)
+
+	for _, e := range entries {
+		switch {
+		case !e.Date.Before(currentStart) && !e.Date.After(today):
+			addEntry(&current, e)
+		case !e.Date.Before(previousStart) && !e.Date.After(previousEnd):
+			addEntry(&previous, e)
+		}
+	}
+	return
+}
+
+func addEntry(total *ccusage.DailyEntry, entry ccusage.DailyEntry) {
+	total.InputTokens += entry.InputTokens
+	total.OutputTokens += entry.OutputTokens
+	total.CacheTokens += entry.CacheTokens
+	total.TotalTokens += entry.TotalTokens
+	total.Cost += entry.Cost
+}
+
 func RuleColumn(width int) string {
 	return strings.Repeat("─", width)
 }

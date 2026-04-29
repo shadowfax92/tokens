@@ -2,9 +2,12 @@ package cmd
 
 import (
 	"fmt"
+	"os"
+	"text/tabwriter"
 	"time"
 
 	"github.com/fatih/color"
+	"github.com/nickhudkins/tokens/ccusage"
 	"github.com/nickhudkins/tokens/render"
 	"github.com/spf13/cobra"
 )
@@ -50,6 +53,11 @@ var chartCmd = &cobra.Command{
 			render.FormatTokens(totalTok),
 			render.FormatTokens(totalTok/int64(maxInt(1, len(filled)))))
 
+		if detailed {
+			printChartBreakdown(filled, today)
+			fmt.Println()
+		}
+
 		render.Bold.Printf("Cost · last %d days\n", days)
 		render.VerticalBars(costVals, labels, render.FormatCost, color.New(color.FgGreen))
 		render.Dim.Printf("  Total %s · avg %s/day\n",
@@ -58,6 +66,20 @@ var chartCmd = &cobra.Command{
 
 		return nil
 	},
+}
+
+func printChartBreakdown(entries []ccusage.DailyEntry, today time.Time) {
+	render.Bold.Printf("Breakdown · last %d days\n", len(entries))
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(w, "  Day\tInput\tOutput\tCache")
+	for _, e := range entries {
+		fmt.Fprintf(w, "  %s\t%s\t%s\t%s\n",
+			render.DayLabel(e.Date, today),
+			render.FormatTokens(e.InputTokens),
+			render.FormatTokens(e.OutputTokens),
+			render.FormatTokens(e.CacheTokens))
+	}
+	_ = w.Flush()
 }
 
 func init() {

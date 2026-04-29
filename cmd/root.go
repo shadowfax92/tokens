@@ -256,6 +256,19 @@ func maxInt(a, b int) int {
 	return b
 }
 
+func daysFlagChanged(cmd *cobra.Command) bool {
+	if cmd == nil {
+		return false
+	}
+	if flag := cmd.Flags().Lookup("days"); flag != nil {
+		return flag.Changed
+	}
+	if flag := cmd.Root().PersistentFlags().Lookup("days"); flag != nil {
+		return flag.Changed
+	}
+	return false
+}
+
 const usageTemplate = `{{helpHeader "Usage:"}}{{if .Runnable}}
   {{.UseLine}}{{end}}{{if .HasAvailableSubCommands}}
   {{.CommandPath}} [command]{{end}}{{if gt (len .Aliases) 0}}
@@ -283,9 +296,9 @@ var (
 	helpHintColor   = color.New(color.Faint)
 )
 
-func helpHeader(s string) string  { return helpHeaderColor.Sprint(s) }
-func helpCmdCol(s string) string  { return helpCmdColor.Sprint(s) }
-func helpHint(s string) string    { return helpHintColor.Sprint(s) }
+func helpHeader(s string) string { return helpHeaderColor.Sprint(s) }
+func helpCmdCol(s string) string { return helpCmdColor.Sprint(s) }
+func helpHint(s string) string   { return helpHintColor.Sprint(s) }
 func helpAliases(aliases []string) string {
 	return helpAliasColor.Sprintf("(aliases: %s)", strings.Join(aliases, ", "))
 }
@@ -331,7 +344,7 @@ func init() {
 
 	rootCmd.PersistentFlags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
 	rootCmd.PersistentFlags().BoolVar(&noCache, "no-cache", false, "Bypass cache, force re-fetch")
-	rootCmd.PersistentFlags().IntVar(&days, "days", 0, "Window in days for charts (default 14)")
+	rootCmd.PersistentFlags().IntVar(&days, "days", 0, "Window in days for charts, raw tables, sparklines, and explicit daily/growth views (default 14)")
 	rootCmd.PersistentFlags().BoolVarP(&detailed, "detailed", "d", false, "Show input/output/cache breakdown")
 	rootCmd.SetUsageTemplate(usageTemplate)
 }

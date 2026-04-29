@@ -42,8 +42,10 @@ This builds and copies `tokens` to `$GOPATH/bin/`.
 ```sh
 tokens                  # one-screen dashboard
 tokens today            # just today's numbers
+tokens today --days 5   # compact daily totals for the last 5 days
 tokens claude           # Claude Code deep dive
 tokens chart --days 30  # full bar charts
+tokens growth --days 14 # last 14 days vs previous 14 days
 ```
 
 ## Commands
@@ -51,11 +53,11 @@ tokens chart --days 30  # full bar charts
 | Command | Description |
 |---------|-------------|
 | `tokens` | Default dashboard — today, trends, sparklines |
-| `tokens today` | Today only, compact and pipe-friendly |
+| `tokens today` | Today only, compact and pipe-friendly; add `--days N` for a daily window |
 | `tokens claude` (`cc`) | Claude Code: today, week, month, all-time, sparkline |
 | `tokens codex` (`cx`) | Codex: same shape |
-| `tokens chart` | Full-size daily bar charts for tokens and cost |
-| `tokens growth` | Day/week/month deltas with arrows |
+| `tokens chart` | Full-size daily bar charts for tokens and cost; add `-d` for token breakdowns |
+| `tokens growth` | Day/week/month deltas, or `--days N` to compare a rolling window |
 | `tokens raw` (`table`) | Tabular daily breakdown — pipeable to `awk`, `column`, etc. |
 | `tokens refresh` | Bust the cache and re-fetch |
 | `tokens config` | Open config in `$EDITOR` |
@@ -64,14 +66,14 @@ tokens chart --days 30  # full bar charts
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--days N` | `14` | Window for charts and averages |
-| `-d, --detailed` | `false` | Show input/output/cache breakdown |
+| `--days N` | `14` | Window for charts, raw tables, sparklines, and explicit daily/growth views |
+| `-d, --detailed` | `false` | Show input/output/cache breakdown where the view supports totals |
 | `--no-cache` | `false` | Bypass cache, force re-fetch |
 | `--json` | `false` | JSON output |
 
 ## Detailed mode
 
-Add `-d` to surface the input / output / cache split for each tool:
+Add `-d` to surface the input / output / cache split alongside totals. Dashboards and tool views show per-tool detail; chart and growth views show window-level breakdowns:
 
 <div align="center">
 
@@ -81,7 +83,7 @@ Add `-d` to surface the input / output / cache split for each tool:
 
 ## Today only
 
-Compact, scriptable output — pipe it into anything:
+Compact, scriptable output — pipe it into anything. Add `--days N` to show one compact daily block per day:
 
 <div align="center">
 
@@ -101,7 +103,7 @@ Compact, scriptable output — pipe it into anything:
 
 ## Growth
 
-`tokens growth` answers "am I trending up or down?":
+`tokens growth` answers "am I trending up or down?" By default it shows day/week/month deltas. With `--days N`, it compares the last `N` days against the previous `N` days:
 
 <div align="center">
 
@@ -111,7 +113,7 @@ Compact, scriptable output — pipe it into anything:
 
 ## Full charts
 
-`tokens chart` opens up the sparklines into full vertical bar charts. Use `--days 30` for a longer window:
+`tokens chart` opens up the sparklines into full vertical bar charts. Use `--days 30` for a longer window, and `-d` to add per-day input/output/cache rows:
 
 <div align="center">
 
