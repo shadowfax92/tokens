@@ -45,7 +45,8 @@ type codexResponse struct {
 	Daily []struct {
 		Date                  string  `json:"date"`
 		InputTokens           int64   `json:"inputTokens"`
-		CachedInputTokens     int64   `json:"cachedInputTokens"`
+		CacheCreationTokens   int64   `json:"cacheCreationTokens"`
+		CacheReadTokens       int64   `json:"cacheReadTokens"`
 		OutputTokens          int64   `json:"outputTokens"`
 		ReasoningOutputTokens int64   `json:"reasoningOutputTokens"`
 		TotalTokens           int64   `json:"totalTokens"`
@@ -65,12 +66,18 @@ func runNpx(args ...string) ([]byte, error) {
 	return out, nil
 }
 
+// fetchClaude pulls Claude Code daily usage. It uses the `claude` subcommand
+// (not bare `ccusage daily`, which now aggregates every detected agent and keys
+// each row by `period` instead of `date` — that shape parses to zero entries here).
 func fetchClaude() (*ToolUsage, error) {
-	out, err := runNpx("ccusage@latest", "daily", "--json")
+	out, err := runNpx("ccusage@latest", "claude", "daily", "--json")
 	if err != nil {
 		return nil, err
 	}
+	return parseClaude(out)
+}
 
+func parseClaude(out []byte) (*ToolUsage, error) {
 	var resp claudeResponse
 	if err := json.Unmarshal(out, &resp); err != nil {
 		return nil, fmt.Errorf("parse ccusage JSON: %w", err)
@@ -101,12 +108,18 @@ func fetchClaude() (*ToolUsage, error) {
 	return usage, nil
 }
 
+// fetchCodex pulls Codex daily usage. Codex now lives under the main `ccusage`
+// package as a subcommand; the old standalone `@ccusage/codex` package is
+// deprecated and just prints "use npx ccusage instead" to stderr (exit 1).
 func fetchCodex() (*ToolUsage, error) {
-	out, err := runNpx("@ccusage/codex@latest", "daily", "--json", "--locale", "en-CA")
+	out, err := runNpx("ccusage@latest", "codex", "daily", "--json")
 	if err != nil {
 		return nil, err
 	}
+	return parseCodex(out)
+}
 
+func parseCodex(out []byte) (*ToolUsage, error) {
 	var resp codexResponse
 	if err := json.Unmarshal(out, &resp); err != nil {
 		return nil, fmt.Errorf("parse codex JSON: %w", err)
@@ -122,7 +135,7 @@ func fetchCodex() (*ToolUsage, error) {
 			Date:         t,
 			InputTokens:  d.InputTokens,
 			OutputTokens: d.OutputTokens,
-			CacheTokens:  d.CachedInputTokens,
+			CacheTokens:  d.CacheCreationTokens + d.CacheReadTokens,
 			TotalTokens:  d.TotalTokens,
 			Cost:         d.CostUSD,
 		}

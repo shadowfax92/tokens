@@ -213,7 +213,7 @@ func fetchWithSpinner() *ccusage.FetchResult {
 		return ccusage.Fetch(opts)
 	}
 
-	stop := startSpinner("Fetching usage data from ccusage and @ccusage/codex...")
+	stop := startSpinner("Fetching usage data from ccusage...")
 	res := ccusage.Fetch(opts)
 	stop()
 
