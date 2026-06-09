@@ -8,7 +8,7 @@
 
 </div>
 
-You want to know how much you're burning on Claude Code and Codex without leaving the terminal. `tokens` shells out to [`ccusage`](https://github.com/ryoppippi/ccusage) and [`@ccusage/codex`](https://www.npmjs.com/package/@ccusage/codex), caches the result, and renders a one-screen dashboard with sparklines and growth metrics.
+You want to know how much you're burning on Claude Code and Codex without leaving the terminal. `tokens` shells out to [`ccusage`](https://github.com/ryoppippi/ccusage) (its `claude` and `codex` subcommands), caches the result, and renders a one-screen dashboard with sparklines and growth metrics.
 
 - 📊 **One-screen dashboard** — today's spend per tool, trends, sparklines, all above the fold
 - 💸 **Cost first** — every view shows tokens *and* dollars
@@ -27,7 +27,7 @@ You want to know how much you're burning on Claude Code and Codex without leavin
 
 ## Install
 
-Requires [Go 1.25+](https://go.dev/dl/) and [Node.js](https://nodejs.org/) (for `npx`). On first run, `npx` will fetch `ccusage` and `@ccusage/codex` automatically.
+Requires [Go 1.25+](https://go.dev/dl/) and [Node.js](https://nodejs.org/) (for `npx`). On first run, `npx` will fetch `ccusage` automatically.
 
 ```sh
 git clone https://github.com/shadowfax92/tokens.git

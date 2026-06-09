@@ -14,7 +14,7 @@ var refreshCmd = &cobra.Command{
 	Short:       "Bust the cache and re-fetch usage data",
 	Annotations: map[string]string{"group": groupData},
 	RunE: func(cmd *cobra.Command, args []string) error {
-		stop := startSpinner("Refreshing usage data from ccusage and @ccusage/codex...")
+		stop := startSpinner("Refreshing usage data from ccusage...")
 		res := ccusage.Fetch(ccusage.FetchOptions{
 			NoCache:  true,
 			CacheTTL: time.Duration(cfg.CacheTTLMinutes) * time.Minute,
