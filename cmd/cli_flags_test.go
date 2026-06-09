@@ -81,7 +81,7 @@ func TestChartBreaksDownByProvider(t *testing.T) {
 	if err != nil {
 		t.Fatalf("tokens chart --days 5: %v\n%s", err, out)
 	}
-	for _, want := range []string{"Tokens · last 5 days", "Cost · last 5 days", "Claude Code", "Codex", "Total"} {
+	for _, want := range []string{"Tokens · last 5 days", "Cost · last 5 days", "Claude Code", "Codex", "Total", "peak "} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("chart output missing %q:\n%s", want, out)
 		}

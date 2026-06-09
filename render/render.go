@@ -3,6 +3,8 @@ package render
 import (
 	"fmt"
 	"math"
+	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -11,16 +13,30 @@ import (
 )
 
 var (
-	Bold      = color.New(color.Bold)
-	Dim       = color.New(color.Faint)
-	Cyan      = color.New(color.FgCyan)
-	CyanBold  = color.New(color.FgCyan, color.Bold)
-	Green     = color.New(color.FgGreen)
-	GreenBold = color.New(color.FgGreen, color.Bold)
-	Magenta   = color.New(color.FgMagenta)
-	Yellow    = color.New(color.FgYellow)
-	Red       = color.New(color.FgRed, color.Bold)
+	Bold        = color.New(color.Bold)
+	Dim         = color.New(color.Faint)
+	Cyan        = color.New(color.FgCyan)
+	CyanBold    = color.New(color.FgCyan, color.Bold)
+	Green       = color.New(color.FgGreen)
+	GreenBold   = color.New(color.FgGreen, color.Bold)
+	Magenta     = color.New(color.FgMagenta)
+	MagentaBold = color.New(color.FgMagenta, color.Bold)
+	Yellow      = color.New(color.FgYellow)
+	Red         = color.New(color.FgRed, color.Bold)
 )
+
+// TermWidth reports the terminal's usable column count. It prefers the live tty
+// size (ioctl) and falls back to $COLUMNS, then 80, so non-tty contexts (pipes,
+// tests, SVG capture) and unsupported platforms stay deterministic.
+func TermWidth() int {
+	if w := osTermWidth(); w > 0 {
+		return w
+	}
+	if c, err := strconv.Atoi(os.Getenv("COLUMNS")); err == nil && c > 0 {
+		return c
+	}
+	return 80
+}
 
 func FormatTokens(n int64) string {
 	switch {
@@ -97,20 +113,105 @@ func Sparkline(values []float64) string {
 	return b.String()
 }
 
-// Series is one stack in a StackedVerticalBars chart — a labeled, colored
-// value-per-day slice. Stacks render bottom-to-top in slice order.
+// Series is one bar group in a GroupedVerticalBars chart — a labeled, colored
+// value-per-day slice. One series renders one bar per column.
 type Series struct {
 	Name   string
 	Color  *color.Color
 	Values []float64
 }
 
-// StackedVerticalBars draws the solid-block bar chart, but each day's bar is
-// split top-to-bottom across the series (first series on the bottom). The bar
-// height stays the column's combined total, so the silhouette matches a plain
-// single-series chart — only the coloring carries the per-series breakdown.
-// formatter labels the per-column total under each bar.
-func StackedVerticalBars(series []Series, labels []string, formatter func(float64) string) {
+// barRows scales one value to a row count in [0,height] against the largest
+// single value in the chart. Any positive value keeps at least one row so small
+// days never vanish; zero (or a zero scale) draws nothing.
+func barRows(value, maxVal float64, height int) int {
+	if value <= 0 || maxVal <= 0 || height <= 0 {
+		return 0
+	}
+	r := int(math.Round(value / maxVal * float64(height)))
+	if r < 1 {
+		r = 1
+	}
+	if r > height {
+		r = height
+	}
+	return r
+}
+
+// barLayout is the per-column geometry GroupedVerticalBars draws with: bar width,
+// the gap inside a day's cluster, the cluster's visible width, the full column
+// stride, how often a label is printed, and which label set (full or short).
+type barLayout struct {
+	barW     int
+	innerGap int
+	groupW   int
+	colWidth int
+	every    int
+	labels   []string
+}
+
+// chooseBarLayout picks the richest layout whose columns fit usable width. It
+// walks a ladder from 2-wide bars with full labels down to 1-wide bars with
+// short labels; if even the densest non-overlapping form overflows, it drops the
+// inter-cluster gutter and thins labels so the chart still fits.
+func chooseBarLayout(cols int, full, short []string, nSeries, usable int) barLayout {
+	if nSeries < 1 {
+		nSeries = 1
+	}
+	type cand struct {
+		barW, innerGap int
+		labels         []string
+	}
+	ladder := []cand{
+		{2, 1, full},
+		{2, 1, short},
+		{1, 1, short},
+		{1, 0, short},
+	}
+	for _, c := range ladder {
+		groupW := nSeries*c.barW + (nSeries-1)*c.innerGap
+		colWidth := groupW + 1
+		if lw := maxLen(c.labels) + 1; lw > colWidth {
+			colWidth = lw
+		}
+		if cols*colWidth <= usable {
+			return barLayout{c.barW, c.innerGap, groupW, colWidth, 1, c.labels}
+		}
+	}
+
+	groupW := nSeries
+	colWidth := groupW + 1
+	if cols*colWidth > usable {
+		colWidth = groupW
+	}
+	if colWidth < 1 {
+		colWidth = 1
+	}
+	every := 1
+	if lw := maxLen(short); lw >= colWidth {
+		every = lw/colWidth + 1
+	}
+	return barLayout{1, 0, groupW, colWidth, every, short}
+}
+
+func maxLen(ss []string) int {
+	m := 0
+	for _, s := range ss {
+		if len(s) > m {
+			m = len(s)
+		}
+	}
+	return m
+}
+
+const chartHeight = 8
+
+// GroupedVerticalBars draws one cluster of side-by-side bars per column (day) —
+// one bar per series, each scaled against the largest single value across every
+// series so the tallest bar fills the chart. The layout adapts to width: bar
+// width, label form, and label thinning are chosen to fit. fullLabels and
+// shortLabels are parallel per-column label sets; the chosen layout picks one.
+func GroupedVerticalBars(series []Series, fullLabels, shortLabels []string, width int) {
 	if len(series) == 0 {
 		fmt.Println("  (none)")
 		return
@@ -122,157 +223,80 @@ func StackedVerticalBars(series []Series, labels []string, formatter func(float6
 			cols = len(s.Values)
 		}
 	}
-
-	totals := make([]float64, cols)
-	var maxTotal float64
-	for i := 0; i < cols; i++ {
-		var t float64
-		for _, s := range series {
-			if i < len(s.Values) {
-				t += s.Values[i]
-			}
-		}
-		totals[i] = t
-		if t > maxTotal {
-			maxTotal = t
-		}
-	}
-
-	if maxTotal == 0 {
+	if cols == 0 {
 		fmt.Println("  (none)")
 		return
 	}
 
-	chartHeight := 8
-	colWidth := 7
-	for _, l := range labels {
-		if len(l)+1 > colWidth {
-			colWidth = len(l) + 1
-		}
-	}
-	for _, t := range totals {
-		if w := len(formatter(t)) + 1; w > colWidth {
-			colWidth = w
-		}
-	}
-
-	splits := make([][]int, cols)
-	for i := 0; i < cols; i++ {
-		vals := make([]float64, len(series))
-		for si, s := range series {
-			if i < len(s.Values) {
-				vals[si] = s.Values[i]
+	var maxVal float64
+	for _, s := range series {
+		for _, v := range s.Values {
+			if v > maxVal {
+				maxVal = v
 			}
 		}
-		splits[i] = stackHeights(vals, maxTotal, chartHeight)
 	}
+	if maxVal == 0 {
+		fmt.Println("  (none)")
+		return
+	}
+
+	lay := chooseBarLayout(cols, fullLabels, shortLabels, len(series), width-2)
+
+	// When even the densest layout can't fit every column, render only the most
+	// recent days that fit and note it, rather than letting the chart wrap. Bars
+	// still scale to the full-window max, so the title's peak stays accurate.
+	start := 0
+	if fit := (width - 2) / lay.colWidth; fit >= 1 && fit < cols {
+		start = cols - fit
+		fmt.Println(Dim.Sprintf("  (showing last %d of %d days — widen terminal for the full window)", fit, cols))
+	}
+
+	heights := make([][]int, len(series))
+	for si, s := range series {
+		hs := make([]int, cols)
+		for c := 0; c < cols; c++ {
+			if c < len(s.Values) {
+				hs[c] = barRows(s.Values[c], maxVal, chartHeight)
+			}
+		}
+		heights[si] = hs
+	}
+
+	bar := strings.Repeat("█", lay.barW)
+	gap := strings.Repeat(" ", lay.innerGap)
+	blank := strings.Repeat(" ", lay.barW)
+	pad := strings.Repeat(" ", lay.colWidth-lay.groupW)
 
 	for row := chartHeight; row >= 1; row-- {
 		fmt.Print("  ")
-		for i := 0; i < cols; i++ {
-			lo, printed := 0, false
+		for c := start; c < cols; c++ {
+			var cell strings.Builder
 			for si := range series {
-				hi := lo + splits[i][si]
-				if splits[i][si] > 0 && row > lo && row <= hi {
-					fmt.Printf("%s%s", series[si].Color.Sprint("██"), strings.Repeat(" ", colWidth-2))
-					printed = true
-					break
+				if si > 0 {
+					cell.WriteString(gap)
 				}
-				lo = hi
+				if heights[si][c] >= row {
+					cell.WriteString(series[si].Color.Sprint(bar))
+				} else {
+					cell.WriteString(blank)
+				}
 			}
-			if !printed {
-				fmt.Print(strings.Repeat(" ", colWidth))
-			}
+			fmt.Print(cell.String() + pad)
 		}
 		fmt.Println()
 	}
 
 	fmt.Print("  ")
-	for _, l := range labels {
-		fmt.Printf("%-*s", colWidth, l)
+	for c := start; c < cols; c++ {
+		label := ""
+		// Thin from the right so the most recent day is always labeled.
+		if c < len(lay.labels) && (cols-1-c)%lay.every == 0 {
+			label = lay.labels[c]
+		}
+		fmt.Printf("%-*s", lay.colWidth, label)
 	}
 	fmt.Println()
-
-	fmt.Print("  ")
-	for _, t := range totals {
-		Dim.Printf("%-*s", colWidth, formatter(t))
-	}
-	fmt.Println()
-}
-
-// stackHeights splits one column's bar into per-series row counts (bottom-to-top
-// in series order). The bar's height is round(total/maxTotal * height), and the
-// rows are apportioned to the series by cumulative proportional rounding so they
-// never overflow the bar. Any non-zero series keeps at least one row whenever the
-// bar is tall enough to fit every non-zero series.
-func stackHeights(values []float64, maxTotal float64, height int) []int {
-	rows := make([]int, len(values))
-	var total float64
-	for _, v := range values {
-		total += v
-	}
-	if total <= 0 || maxTotal <= 0 || height <= 0 {
-		return rows
-	}
-
-	barTop := int(math.Round(total / maxTotal * float64(height)))
-	if barTop < 1 {
-		barTop = 1
-	}
-	if barTop > height {
-		barTop = height
-	}
-
-	cum, prev := 0.0, 0
-	for i, v := range values {
-		cum += v
-		cumRows := int(math.Round(cum / total * float64(barTop)))
-		if cumRows > barTop {
-			cumRows = barTop
-		}
-		rows[i] = cumRows - prev
-		prev = cumRows
-	}
-
-	ensureVisible(rows, values, barTop)
-	return rows
-}
-
-// ensureVisible gives every non-zero series at least one row when the bar can fit
-// them all, borrowing from the tallest stack so the total stays put.
-func ensureVisible(rows []int, values []float64, barTop int) {
-	nonzero := 0
-	for _, v := range values {
-		if v > 0 {
-			nonzero++
-		}
-	}
-	if nonzero == 0 || barTop < nonzero {
-		return
-	}
-	for {
-		starved := -1
-		for i := range rows {
-			if values[i] > 0 && rows[i] == 0 {
-				starved = i
-				break
-			}
-		}
-		if starved == -1 {
-			return
-		}
-		donor := -1
-		for i := range rows {
-			if rows[i] >= 2 && (donor == -1 || rows[i] > rows[donor]) {
-				donor = i
-			}
-		}
-		if donor == -1 {
-			return
-		}
-		rows[donor]--
-		rows[starved]++
-	}
 }
 
 func DayLabel(date, today time.Time) string {

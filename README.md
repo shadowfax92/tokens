@@ -113,7 +113,7 @@ Compact, scriptable output — pipe it into anything. Add `--days N` to show one
 
 ## Full charts
 
-`tokens chart` opens up the sparklines into full vertical bar charts. Each day's bar is stacked by tool — **Claude Code in cyan on the bottom, Codex in green on top** — so the bar height stays the daily total while the colors show the split; a legend and per-tool totals sit alongside. Use `--days 30` for a longer window, and `-d` to add per-tool input/output/cache rows. (When only one tool has data, it renders as a single-color chart.)
+`tokens chart` opens up the sparklines into full vertical bar charts. Each day shows **Claude Code (cyan) and Codex (magenta) as side-by-side bars**, so you can compare the two tools at a glance — both within a day and across the window. A legend and per-tool totals sit alongside, and each chart's title notes the window's peak day. The layout adapts to your terminal: wider bars with full date labels when there's room, compact bars with day-of-month labels when it's narrow. Use `--days 30` for a longer window, and `-d` to add per-tool input/output/cache rows. (When only one tool has data, it renders as a single series.)
 
 <div align="center">
 

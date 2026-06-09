@@ -84,7 +84,7 @@ func renderTodayRows(data *ccusage.UsageData, date time.Time) {
 		emit("Claude Code", claudeByDate[key], render.CyanBold)
 	}
 	if data.Codex != nil {
-		emit("Codex", codexByDate[key], render.GreenBold)
+		emit("Codex", codexByDate[key], render.MagentaBold)
 	}
 
 	render.Dim.Printf("              %s   %s\n",

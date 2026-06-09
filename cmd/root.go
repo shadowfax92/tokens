@@ -94,7 +94,7 @@ func renderToday(data *ccusage.UsageData, today time.Time) {
 		rows = append(rows, row{"Claude Code", render.FindEntry(data.Claude.Daily, today), render.CyanBold})
 	}
 	if data.Codex != nil {
-		rows = append(rows, row{"Codex", render.FindEntry(data.Codex.Daily, today), render.GreenBold})
+		rows = append(rows, row{"Codex", render.FindEntry(data.Codex.Daily, today), render.MagentaBold})
 	}
 
 	for _, r := range rows {
