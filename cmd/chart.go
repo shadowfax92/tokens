@@ -14,7 +14,7 @@ import (
 
 // chartProvider is one tool's slice of the chart window, with the color it
 // renders in. filled is always exactly `days` long (FillMissingDays), so every
-// provider shares the same dates/indices and stacks cleanly.
+// provider shares the same dates/indices and lines up column-for-column.
 type chartProvider struct {
 	name   string
 	col    *color.Color
@@ -39,12 +39,14 @@ var chartCmd = &cobra.Command{
 
 		today := startOfDay(time.Now())
 		providers := chartProviders(data, today)
-		labels := chartLabels(today, days)
+		fullLabels, shortLabels := chartLabels(today, days)
+		width := render.TermWidth()
 
 		printChartLegend(providers)
 
-		render.Bold.Printf("Tokens · last %d days\n", days)
-		render.StackedVerticalBars(seriesFor(providers, tokensValue), labels, formatTokensFloat)
+		tokSeries := seriesFor(providers, tokensValue)
+		render.Bold.Printf("Tokens · last %d days%s\n", days, peakSuffix(tokSeries, formatTokensFloat))
+		render.GroupedVerticalBars(tokSeries, fullLabels, shortLabels, width)
 		printChartSummary(providers, tokensValue, formatTokensFloat)
 		fmt.Println()
 
@@ -53,8 +55,9 @@ var chartCmd = &cobra.Command{
 			fmt.Println()
 		}
 
-		render.Bold.Printf("Cost · last %d days\n", days)
-		render.StackedVerticalBars(seriesFor(providers, costValue), labels, render.FormatCost)
+		costSeries := seriesFor(providers, costValue)
+		render.Bold.Printf("Cost · last %d days%s\n", days, peakSuffix(costSeries, render.FormatCost))
+		render.GroupedVerticalBars(costSeries, fullLabels, shortLabels, width)
 		printChartSummary(providers, costValue, render.FormatCost)
 
 		return nil
@@ -67,17 +70,41 @@ func chartProviders(data *ccusage.UsageData, today time.Time) []chartProvider {
 		ps = append(ps, chartProvider{"Claude Code", render.CyanBold, render.FillMissingDays(data.Claude.Daily, today, days)})
 	}
 	if data.Codex != nil {
-		ps = append(ps, chartProvider{"Codex", render.GreenBold, render.FillMissingDays(data.Codex.Daily, today, days)})
+		ps = append(ps, chartProvider{"Codex", render.MagentaBold, render.FillMissingDays(data.Codex.Daily, today, days)})
 	}
 	return ps
 }
 
-func chartLabels(today time.Time, n int) []string {
-	labels := make([]string, n)
+// chartLabels builds parallel full and short per-column labels for the window.
+// Full ("Mon 02"/"Today") are used when the layout has room; short (day-of-month)
+// keep narrow terminals legible. The grouped renderer picks whichever fits.
+func chartLabels(today time.Time, n int) (full, short []string) {
+	full = make([]string, n)
+	short = make([]string, n)
 	for i := 0; i < n; i++ {
-		labels[i] = render.DayLabel(today.AddDate(0, 0, -(n-1-i)), today)
+		d := today.AddDate(0, 0, -(n - 1 - i))
+		full[i] = render.DayLabel(d, today)
+		short[i] = d.Format("02")
 	}
-	return labels
+	return
+}
+
+// peakSuffix annotates a chart title with the window's largest single-series day
+// (" · peak <v>/day"), restoring a quantitative anchor for grouped bars whose
+// heights no longer map to a printed per-column total. Empty when there's no data.
+func peakSuffix(series []render.Series, format func(float64) string) string {
+	var peak float64
+	for _, s := range series {
+		for _, v := range s.Values {
+			if v > peak {
+				peak = v
+			}
+		}
+	}
+	if peak <= 0 {
+		return ""
+	}
+	return fmt.Sprintf(" · peak %s/day", format(peak))
 }
 
 func tokensValue(e ccusage.DailyEntry) float64 { return float64(e.TotalTokens) }

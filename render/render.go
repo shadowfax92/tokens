@@ -204,12 +204,14 @@ func maxLen(ss []string) int {
 	return m
 }
 
-// StackedVerticalBars draws the solid-block bar chart, but each day's bar is
-// split top-to-bottom across the series (first series on the bottom). The bar
-// height stays the column's combined total, so the silhouette matches a plain
-// single-series chart — only the coloring carries the per-series breakdown.
-// formatter labels the per-column total under each bar.
-func StackedVerticalBars(series []Series, labels []string, formatter func(float64) string) {
+const chartHeight = 8
+
+// GroupedVerticalBars draws one cluster of side-by-side bars per column (day) —
+// one bar per series, each scaled against the largest single value across every
+// series so the tallest bar fills the chart. The layout adapts to width: bar
+// width, label form, and label thinning are chosen to fit. fullLabels and
+// shortLabels are parallel per-column label sets; the chosen layout picks one.
+func GroupedVerticalBars(series []Series, fullLabels, shortLabels []string, width int) {
 	if len(series) == 0 {
 		fmt.Println("  (none)")
 		return
@@ -221,157 +223,71 @@ func StackedVerticalBars(series []Series, labels []string, formatter func(float6
 			cols = len(s.Values)
 		}
 	}
-
-	totals := make([]float64, cols)
-	var maxTotal float64
-	for i := 0; i < cols; i++ {
-		var t float64
-		for _, s := range series {
-			if i < len(s.Values) {
-				t += s.Values[i]
-			}
-		}
-		totals[i] = t
-		if t > maxTotal {
-			maxTotal = t
-		}
-	}
-
-	if maxTotal == 0 {
+	if cols == 0 {
 		fmt.Println("  (none)")
 		return
 	}
 
-	chartHeight := 8
-	colWidth := 7
-	for _, l := range labels {
-		if len(l)+1 > colWidth {
-			colWidth = len(l) + 1
-		}
-	}
-	for _, t := range totals {
-		if w := len(formatter(t)) + 1; w > colWidth {
-			colWidth = w
-		}
-	}
-
-	splits := make([][]int, cols)
-	for i := 0; i < cols; i++ {
-		vals := make([]float64, len(series))
-		for si, s := range series {
-			if i < len(s.Values) {
-				vals[si] = s.Values[i]
+	var maxVal float64
+	for _, s := range series {
+		for _, v := range s.Values {
+			if v > maxVal {
+				maxVal = v
 			}
 		}
-		splits[i] = stackHeights(vals, maxTotal, chartHeight)
 	}
+	if maxVal == 0 {
+		fmt.Println("  (none)")
+		return
+	}
+
+	lay := chooseBarLayout(cols, fullLabels, shortLabels, len(series), width-2)
+
+	heights := make([][]int, len(series))
+	for si, s := range series {
+		hs := make([]int, cols)
+		for c := 0; c < cols; c++ {
+			if c < len(s.Values) {
+				hs[c] = barRows(s.Values[c], maxVal, chartHeight)
+			}
+		}
+		heights[si] = hs
+	}
+
+	bar := strings.Repeat("█", lay.barW)
+	gap := strings.Repeat(" ", lay.innerGap)
+	blank := strings.Repeat(" ", lay.barW)
+	pad := strings.Repeat(" ", lay.colWidth-lay.groupW)
 
 	for row := chartHeight; row >= 1; row-- {
 		fmt.Print("  ")
-		for i := 0; i < cols; i++ {
-			lo, printed := 0, false
+		for c := 0; c < cols; c++ {
+			var cell strings.Builder
 			for si := range series {
-				hi := lo + splits[i][si]
-				if splits[i][si] > 0 && row > lo && row <= hi {
-					fmt.Printf("%s%s", series[si].Color.Sprint("██"), strings.Repeat(" ", colWidth-2))
-					printed = true
-					break
+				if si > 0 {
+					cell.WriteString(gap)
 				}
-				lo = hi
+				if heights[si][c] >= row {
+					cell.WriteString(series[si].Color.Sprint(bar))
+				} else {
+					cell.WriteString(blank)
+				}
 			}
-			if !printed {
-				fmt.Print(strings.Repeat(" ", colWidth))
-			}
+			fmt.Print(cell.String() + pad)
 		}
 		fmt.Println()
 	}
 
 	fmt.Print("  ")
-	for _, l := range labels {
-		fmt.Printf("%-*s", colWidth, l)
+	for c := 0; c < cols; c++ {
+		label := ""
+		// Thin from the right so the most recent day is always labeled.
+		if c < len(lay.labels) && (cols-1-c)%lay.every == 0 {
+			label = lay.labels[c]
+		}
+		fmt.Printf("%-*s", lay.colWidth, label)
 	}
 	fmt.Println()
-
-	fmt.Print("  ")
-	for _, t := range totals {
-		Dim.Printf("%-*s", colWidth, formatter(t))
-	}
-	fmt.Println()
-}
-
-// stackHeights splits one column's bar into per-series row counts (bottom-to-top
-// in series order). The bar's height is round(total/maxTotal * height), and the
-// rows are apportioned to the series by cumulative proportional rounding so they
-// never overflow the bar. Any non-zero series keeps at least one row whenever the
-// bar is tall enough to fit every non-zero series.
-func stackHeights(values []float64, maxTotal float64, height int) []int {
-	rows := make([]int, len(values))
-	var total float64
-	for _, v := range values {
-		total += v
-	}
-	if total <= 0 || maxTotal <= 0 || height <= 0 {
-		return rows
-	}
-
-	barTop := int(math.Round(total / maxTotal * float64(height)))
-	if barTop < 1 {
-		barTop = 1
-	}
-	if barTop > height {
-		barTop = height
-	}
-
-	cum, prev := 0.0, 0
-	for i, v := range values {
-		cum += v
-		cumRows := int(math.Round(cum / total * float64(barTop)))
-		if cumRows > barTop {
-			cumRows = barTop
-		}
-		rows[i] = cumRows - prev
-		prev = cumRows
-	}
-
-	ensureVisible(rows, values, barTop)
-	return rows
-}
-
-// ensureVisible gives every non-zero series at least one row when the bar can fit
-// them all, borrowing from the tallest stack so the total stays put.
-func ensureVisible(rows []int, values []float64, barTop int) {
-	nonzero := 0
-	for _, v := range values {
-		if v > 0 {
-			nonzero++
-		}
-	}
-	if nonzero == 0 || barTop < nonzero {
-		return
-	}
-	for {
-		starved := -1
-		for i := range rows {
-			if values[i] > 0 && rows[i] == 0 {
-				starved = i
-				break
-			}
-		}
-		if starved == -1 {
-			return
-		}
-		donor := -1
-		for i := range rows {
-			if rows[i] >= 2 && (donor == -1 || rows[i] > rows[donor]) {
-				donor = i
-			}
-		}
-		if donor == -1 {
-			return
-		}
-		rows[donor]--
-		rows[starved]++
-	}
 }
 
 func DayLabel(date, today time.Time) string {

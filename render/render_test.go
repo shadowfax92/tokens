@@ -2,7 +2,6 @@ package render
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"os"
 	"strings"
@@ -11,12 +10,20 @@ import (
 	"github.com/fatih/color"
 )
 
-func sumInts(xs []int) int {
-	s := 0
-	for _, x := range xs {
-		s += x
+func captureStdout(t *testing.T, fn func()) string {
+	t.Helper()
+	old := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
 	}
-	return s
+	os.Stdout = w
+	fn()
+	_ = w.Close()
+	os.Stdout = old
+	var buf bytes.Buffer
+	_, _ = io.Copy(&buf, r)
+	return buf.String()
 }
 
 func TestBarRows(t *testing.T) {
@@ -80,92 +87,76 @@ func TestChooseBarLayout(t *testing.T) {
 	}
 }
 
-func TestStackHeights(t *testing.T) {
-	cases := []struct {
-		name     string
-		values   []float64
-		maxTotal float64
-		height   int
-		want     []int
-	}{
-		{"equal split", []float64{50, 50}, 100, 8, []int{4, 4}},
-		{"dominant plus tiny stays visible", []float64{95, 5}, 100, 8, []int{7, 1}},
-		{"single nonzero fills the bar", []float64{100, 0}, 100, 8, []int{8, 0}},
-		{"all zero draws nothing", []float64{0, 0}, 100, 8, []int{0, 0}},
-		{"below-scale total rounds to one row", []float64{5, 5}, 100, 8, []int{1, 0}},
-		{"proportional", []float64{30, 10}, 40, 8, []int{6, 2}},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			got := stackHeights(tc.values, tc.maxTotal, tc.height)
-			if len(got) != len(tc.want) {
-				t.Fatalf("len(stackHeights(%v)) = %d, want %d", tc.values, len(got), len(tc.want))
-			}
-			for i := range tc.want {
-				if got[i] != tc.want[i] {
-					t.Fatalf("stackHeights(%v, %g, %d) = %v, want %v", tc.values, tc.maxTotal, tc.height, got, tc.want)
-				}
-			}
-		})
-	}
-}
-
-func TestStackedVerticalBarsStacksColorsBottomToTop(t *testing.T) {
-	// EnableColor forces these Colors to emit ANSI regardless of TTY detection,
-	// so the test deterministically exercises the stacking order.
+func TestGroupedVerticalBarsRendersSideBySide(t *testing.T) {
+	// EnableColor forces ANSI regardless of TTY detection so the test can locate
+	// each series' color in the output.
 	cyan := color.New(color.FgCyan, color.Bold)
 	cyan.EnableColor()
-	green := color.New(color.FgGreen, color.Bold)
-	green.EnableColor()
+	magenta := color.New(color.FgMagenta, color.Bold)
+	magenta.EnableColor()
 
-	oldStdout := os.Stdout
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	os.Stdout = w
-
-	series := []Series{
-		{Name: "Claude", Color: cyan, Values: []float64{10}},
-		{Name: "Codex", Color: green, Values: []float64{10}},
-	}
-	StackedVerticalBars(series, []string{"Today"}, func(v float64) string { return fmt.Sprintf("%.0f", v) })
-
-	_ = w.Close()
-	os.Stdout = oldStdout
-	var buf bytes.Buffer
-	_, _ = io.Copy(&buf, r)
-	out := buf.String()
-
-	// First series is the bottom of the stack, so the second series' color
-	// (green) must appear on an earlier (higher) row than the first's (cyan).
-	const cyanCode, greenCode = "\x1b[36", "\x1b[32"
-	greenRow, cyanRow := -1, -1
-	for i, ln := range strings.Split(out, "\n") {
-		if greenRow == -1 && strings.Contains(ln, greenCode) {
-			greenRow = i
+	out := captureStdout(t, func() {
+		series := []Series{
+			{Name: "Claude", Color: cyan, Values: []float64{10}},
+			{Name: "Codex", Color: magenta, Values: []float64{10}},
 		}
-		if cyanRow == -1 && strings.Contains(ln, cyanCode) {
-			cyanRow = i
+		GroupedVerticalBars(series, []string{"Today"}, []string{"02"}, 80)
+	})
+
+	// Grouped (not stacked): with equal values both bars fill the column, so at
+	// least one row carries BOTH colors side by side. A stacked renderer would
+	// never co-locate them on one row.
+	const cyanCode, magentaCode = "\x1b[36", "\x1b[35"
+	sameRow := false
+	for _, ln := range strings.Split(out, "\n") {
+		if strings.Contains(ln, cyanCode) && strings.Contains(ln, magentaCode) {
+			sameRow = true
+			break
 		}
 	}
-	if greenRow == -1 || cyanRow == -1 {
-		t.Fatalf("expected both green and cyan bars in output:\n%q", out)
-	}
-	if greenRow >= cyanRow {
-		t.Fatalf("expected second series (green) stacked above first (cyan): greenRow=%d cyanRow=%d", greenRow, cyanRow)
+	if !sameRow {
+		t.Fatalf("expected both series' colors on the same row (side-by-side):\n%q", out)
 	}
 }
 
-func TestStackHeightsNeverOverflowsAndStaysVisible(t *testing.T) {
-	values := []float64{17, 3, 9}
-	got := stackHeights(values, 40, 8)
-	if s := sumInts(got); s > 8 {
-		t.Fatalf("rows sum %d exceeds chart height 8: %v", s, got)
-	}
-	for i, v := range values {
-		if v > 0 && got[i] == 0 {
-			t.Fatalf("series %d (value %g) collapsed to 0 rows: %v", i, v, got)
+func TestGroupedVerticalBarsScalesEachSeriesIndependently(t *testing.T) {
+	cyan := color.New(color.FgCyan, color.Bold)
+	cyan.EnableColor()
+	magenta := color.New(color.FgMagenta, color.Bold)
+	magenta.EnableColor()
+
+	out := captureStdout(t, func() {
+		series := []Series{
+			{Name: "Claude", Color: cyan, Values: []float64{100}},
+			{Name: "Codex", Color: magenta, Values: []float64{10}},
 		}
+		GroupedVerticalBars(series, []string{"Today"}, []string{"02"}, 80)
+	})
+
+	const cyanCode, magentaCode = "\x1b[36", "\x1b[35"
+	cyanRows, magentaRows := 0, 0
+	for _, ln := range strings.Split(out, "\n") {
+		if strings.Contains(ln, cyanCode) {
+			cyanRows++
+		}
+		if strings.Contains(ln, magentaCode) {
+			magentaRows++
+		}
+	}
+	if cyanRows <= magentaRows {
+		t.Fatalf("dominant series should occupy more rows: cyan=%d magenta=%d\n%q", cyanRows, magentaRows, out)
+	}
+	if magentaRows == 0 {
+		t.Fatalf("small but non-zero series must stay visible (>=1 row):\n%q", out)
+	}
+}
+
+func TestGroupedVerticalBarsEmptyPrintsNone(t *testing.T) {
+	out := captureStdout(t, func() {
+		series := []Series{{Name: "Claude", Color: Dim, Values: []float64{0, 0}}}
+		GroupedVerticalBars(series, []string{"a", "b"}, []string{"a", "b"}, 80)
+	})
+	if !strings.Contains(out, "(none)") {
+		t.Fatalf("expected (none) for an all-zero series:\n%q", out)
 	}
 }
