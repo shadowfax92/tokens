@@ -151,6 +151,53 @@ func TestGroupedVerticalBarsScalesEachSeriesIndependently(t *testing.T) {
 	}
 }
 
+func TestGroupedVerticalBarsTruncatesWhenTooNarrow(t *testing.T) {
+	// 60 two-tool days cannot fit in ~30 columns without wrapping, so the
+	// renderer should drop to the most-recent days that fit and say so.
+	const n = 60
+	vals := make([]float64, n)
+	full := make([]string, n)
+	short := make([]string, n)
+	for i := range vals {
+		vals[i] = float64(i + 1)
+		full[i] = "Mon 02"
+		short[i] = "02"
+	}
+	out := captureStdout(t, func() {
+		series := []Series{
+			{Name: "A", Color: Dim, Values: vals},
+			{Name: "B", Color: Dim, Values: vals},
+		}
+		GroupedVerticalBars(series, full, short, 30)
+	})
+	if !strings.Contains(out, "showing last") {
+		t.Fatalf("expected a truncation note at a too-narrow width:\n%q", out)
+	}
+}
+
+func TestGroupedVerticalBarsNoTruncationWhenItFits(t *testing.T) {
+	// 14 two-tool days fit comfortably at 80 columns — no truncation note.
+	const n = 14
+	vals := make([]float64, n)
+	full := make([]string, n)
+	short := make([]string, n)
+	for i := range vals {
+		vals[i] = float64(i + 1)
+		full[i] = "Mon 02"
+		short[i] = "02"
+	}
+	out := captureStdout(t, func() {
+		series := []Series{
+			{Name: "A", Color: Dim, Values: vals},
+			{Name: "B", Color: Dim, Values: vals},
+		}
+		GroupedVerticalBars(series, full, short, 80)
+	})
+	if strings.Contains(out, "showing last") {
+		t.Fatalf("did not expect truncation at 80 cols for 14 days:\n%q", out)
+	}
+}
+
 func TestGroupedVerticalBarsEmptyPrintsNone(t *testing.T) {
 	out := captureStdout(t, func() {
 		series := []Series{{Name: "Claude", Color: Dim, Values: []float64{0, 0}}}

@@ -243,6 +243,15 @@ func GroupedVerticalBars(series []Series, fullLabels, shortLabels []string, widt
 
 	lay := chooseBarLayout(cols, fullLabels, shortLabels, len(series), width-2)
 
+	// When even the densest layout can't fit every column, render only the most
+	// recent days that fit and note it, rather than letting the chart wrap. Bars
+	// still scale to the full-window max, so the title's peak stays accurate.
+	start := 0
+	if fit := (width - 2) / lay.colWidth; fit >= 1 && fit < cols {
+		start = cols - fit
+		fmt.Println(Dim.Sprintf("  (showing last %d of %d days — widen terminal for the full window)", fit, cols))
+	}
+
 	heights := make([][]int, len(series))
 	for si, s := range series {
 		hs := make([]int, cols)
@@ -261,7 +270,7 @@ func GroupedVerticalBars(series []Series, fullLabels, shortLabels []string, widt
 
 	for row := chartHeight; row >= 1; row-- {
 		fmt.Print("  ")
-		for c := 0; c < cols; c++ {
+		for c := start; c < cols; c++ {
 			var cell strings.Builder
 			for si := range series {
 				if si > 0 {
@@ -279,7 +288,7 @@ func GroupedVerticalBars(series []Series, fullLabels, shortLabels []string, widt
 	}
 
 	fmt.Print("  ")
-	for c := 0; c < cols; c++ {
+	for c := start; c < cols; c++ {
 		label := ""
 		// Thin from the right so the most recent day is always labeled.
 		if c < len(lay.labels) && (cols-1-c)%lay.every == 0 {
