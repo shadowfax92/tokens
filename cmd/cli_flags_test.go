@@ -75,6 +75,58 @@ func TestChartDetailedAddsTokenBreakdown(t *testing.T) {
 	}
 }
 
+func TestChartBreaksDownByProvider(t *testing.T) {
+	today := startOfDay(time.Now())
+	out, err := runTokensWithCache(t, sampleUsageData(today), "chart", "--days", "5")
+	if err != nil {
+		t.Fatalf("tokens chart --days 5: %v\n%s", err, out)
+	}
+	for _, want := range []string{"Tokens · last 5 days", "Cost · last 5 days", "Claude Code", "Codex", "Total"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("chart output missing %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestChartSingleProviderOmitsAbsentTool(t *testing.T) {
+	today := startOfDay(time.Now())
+	data := &ccusage.UsageData{Claude: sampleTool("Claude Code", today, 1_000_000)}
+
+	out, err := runTokensWithCache(t, data, "chart", "--days", "5")
+	if err != nil {
+		t.Fatalf("tokens chart (claude only): %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "Claude Code") {
+		t.Fatalf("expected Claude Code in single-provider output:\n%s", out)
+	}
+	if strings.Contains(out, "Codex") {
+		t.Fatalf("did not expect Codex chrome with no Codex data:\n%s", out)
+	}
+	if strings.Contains(out, "Total") {
+		t.Fatalf("did not expect a Total line for a single provider:\n%s", out)
+	}
+	for _, want := range []string{"Tokens · last 5 days", "Cost · last 5 days"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("chart output missing %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestChartDetailedBreakdownIsPerProvider(t *testing.T) {
+	today := startOfDay(time.Now())
+	out, err := runTokensWithCache(t, sampleUsageData(today), "chart", "--days", "3", "-d")
+	if err != nil {
+		t.Fatalf("tokens chart --days 3 -d: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "Breakdown · last 3 days") {
+		t.Fatalf("missing breakdown header:\n%s", out)
+	}
+	// one Input/Output/Cache table per provider → the column header repeats.
+	if got := strings.Count(out, "Input"); got < 2 {
+		t.Fatalf("expected a breakdown table per provider (>=2 Input headers), got %d:\n%s", got, out)
+	}
+}
+
 func runTokensWithCache(t *testing.T, data *ccusage.UsageData, args ...string) (string, error) {
 	t.Helper()
 	resetCommandState(t)

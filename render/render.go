@@ -2,6 +2,7 @@ package render
 
 import (
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -96,15 +97,48 @@ func Sparkline(values []float64) string {
 	return b.String()
 }
 
-func VerticalBars(values []float64, labels []string, formatter func(float64) string, c *color.Color) {
-	var maxVal float64
-	for _, v := range values {
-		if v > maxVal {
-			maxVal = v
+// Series is one stack in a StackedVerticalBars chart — a labeled, colored
+// value-per-day slice. Stacks render bottom-to-top in slice order.
+type Series struct {
+	Name   string
+	Color  *color.Color
+	Values []float64
+}
+
+// StackedVerticalBars draws the solid-block bar chart, but each day's bar is
+// split top-to-bottom across the series (first series on the bottom). The bar
+// height stays the column's combined total, so the silhouette matches a plain
+// single-series chart — only the coloring carries the per-series breakdown.
+// formatter labels the per-column total under each bar.
+func StackedVerticalBars(series []Series, labels []string, formatter func(float64) string) {
+	if len(series) == 0 {
+		fmt.Println("  (none)")
+		return
+	}
+
+	cols := 0
+	for _, s := range series {
+		if len(s.Values) > cols {
+			cols = len(s.Values)
 		}
 	}
 
-	if maxVal == 0 {
+	totals := make([]float64, cols)
+	var maxTotal float64
+	for i := 0; i < cols; i++ {
+		var t float64
+		for _, s := range series {
+			if i < len(s.Values) {
+				t += s.Values[i]
+			}
+		}
+		totals[i] = t
+		if t > maxTotal {
+			maxTotal = t
+		}
+	}
+
+	if maxTotal == 0 {
 		fmt.Println("  (none)")
 		return
 	}
@@ -116,21 +150,37 @@ func VerticalBars(values []float64, labels []string, formatter func(float64) str
 			colWidth = len(l) + 1
 		}
 	}
-	for _, v := range values {
-		if w := len(formatter(v)) + 1; w > colWidth {
+	for _, t := range totals {
+		if w := len(formatter(t)) + 1; w > colWidth {
 			colWidth = w
 		}
 	}
 
+	splits := make([][]int, cols)
+	for i := 0; i < cols; i++ {
+		vals := make([]float64, len(series))
+		for si, s := range series {
+			if i < len(s.Values) {
+				vals[si] = s.Values[i]
+			}
+		}
+		splits[i] = stackHeights(vals, maxTotal, chartHeight)
+	}
+
 	for row := chartHeight; row >= 1; row-- {
-		threshold := float64(row) / float64(chartHeight) * maxVal
 		fmt.Print("  ")
-		for _, v := range values {
-			if v >= threshold && v > 0 {
-				bar := c.Sprint("██")
-				pad := colWidth - 2
-				fmt.Printf("%s%s", bar, strings.Repeat(" ", pad))
-			} else {
+		for i := 0; i < cols; i++ {
+			lo, printed := 0, false
+			for si := range series {
+				hi := lo + splits[i][si]
+				if splits[i][si] > 0 && row > lo && row <= hi {
+					fmt.Printf("%s%s", series[si].Color.Sprint("██"), strings.Repeat(" ", colWidth-2))
+					printed = true
+					break
+				}
+				lo = hi
+			}
+			if !printed {
 				fmt.Print(strings.Repeat(" ", colWidth))
 			}
 		}
@@ -144,10 +194,85 @@ func VerticalBars(values []float64, labels []string, formatter func(float64) str
 	fmt.Println()
 
 	fmt.Print("  ")
-	for _, v := range values {
-		Dim.Printf("%-*s", colWidth, formatter(v))
+	for _, t := range totals {
+		Dim.Printf("%-*s", colWidth, formatter(t))
 	}
 	fmt.Println()
+}
+
+// stackHeights splits one column's bar into per-series row counts (bottom-to-top
+// in series order). The bar's height is round(total/maxTotal * height), and the
+// rows are apportioned to the series by cumulative proportional rounding so they
+// never overflow the bar. Any non-zero series keeps at least one row whenever the
+// bar is tall enough to fit every non-zero series.
+func stackHeights(values []float64, maxTotal float64, height int) []int {
+	rows := make([]int, len(values))
+	var total float64
+	for _, v := range values {
+		total += v
+	}
+	if total <= 0 || maxTotal <= 0 || height <= 0 {
+		return rows
+	}
+
+	barTop := int(math.Round(total / maxTotal * float64(height)))
+	if barTop < 1 {
+		barTop = 1
+	}
+	if barTop > height {
+		barTop = height
+	}
+
+	cum, prev := 0.0, 0
+	for i, v := range values {
+		cum += v
+		cumRows := int(math.Round(cum / total * float64(barTop)))
+		if cumRows > barTop {
+			cumRows = barTop
+		}
+		rows[i] = cumRows - prev
+		prev = cumRows
+	}
+
+	ensureVisible(rows, values, barTop)
+	return rows
+}
+
+// ensureVisible gives every non-zero series at least one row when the bar can fit
+// them all, borrowing from the tallest stack so the total stays put.
+func ensureVisible(rows []int, values []float64, barTop int) {
+	nonzero := 0
+	for _, v := range values {
+		if v > 0 {
+			nonzero++
+		}
+	}
+	if nonzero == 0 || barTop < nonzero {
+		return
+	}
+	for {
+		starved := -1
+		for i := range rows {
+			if values[i] > 0 && rows[i] == 0 {
+				starved = i
+				break
+			}
+		}
+		if starved == -1 {
+			return
+		}
+		donor := -1
+		for i := range rows {
+			if rows[i] >= 2 && (donor == -1 || rows[i] > rows[donor]) {
+				donor = i
+			}
+		}
+		if donor == -1 {
+			return
+		}
+		rows[donor]--
+		rows[starved]++
+	}
 }
 
 func DayLabel(date, today time.Time) string {
