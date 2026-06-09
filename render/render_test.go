@@ -19,6 +19,67 @@ func sumInts(xs []int) int {
 	return s
 }
 
+func TestBarRows(t *testing.T) {
+	cases := []struct {
+		value, maxVal float64
+		height, want  int
+	}{
+		{100, 100, 8, 8},
+		{50, 100, 8, 4},
+		{1, 100, 8, 1},   // tiny but positive stays visible
+		{0, 100, 8, 0},   // zero draws nothing
+		{100, 0, 8, 0},   // no scale
+		{100, 100, 0, 0}, // no height
+		{200, 100, 8, 8}, // clamps to height
+	}
+	for _, c := range cases {
+		if got := barRows(c.value, c.maxVal, c.height); got != c.want {
+			t.Errorf("barRows(%g, %g, %d) = %d, want %d", c.value, c.maxVal, c.height, got, c.want)
+		}
+	}
+}
+
+func TestChooseBarLayout(t *testing.T) {
+	full := []string{"Mon 02", "Today", "Yest"}
+	short := []string{"02", "03", "04"}
+	rep := func(base []string, n int) []string {
+		out := make([]string, n)
+		for i := range out {
+			out[i] = base[i%len(base)]
+		}
+		return out
+	}
+	cases := []struct {
+		name          string
+		cols, nSeries int
+		usable        int
+		wantBarW      int
+	}{
+		{"wide 14d two tools", 14, 2, 158, 2},
+		{"narrow 14d two tools", 14, 2, 78, 1},
+		{"single tool wide", 14, 1, 158, 2},
+		{"dense 30d narrow", 30, 2, 78, 1},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			lay := chooseBarLayout(c.cols, rep(full, c.cols), rep(short, c.cols), c.nSeries, c.usable)
+			if lay.barW != c.wantBarW {
+				t.Errorf("barW = %d, want %d", lay.barW, c.wantBarW)
+			}
+			if lay.barW < 1 {
+				t.Fatalf("barW must be >= 1, got %d", lay.barW)
+			}
+			if lay.every < 1 {
+				t.Errorf("every must be >= 1, got %d", lay.every)
+			}
+			if c.cols*lay.colWidth > c.usable {
+				t.Errorf("layout overflows: cols(%d) * colWidth(%d) = %d > usable %d",
+					c.cols, lay.colWidth, c.cols*lay.colWidth, c.usable)
+			}
+		})
+	}
+}
+
 func TestStackHeights(t *testing.T) {
 	cases := []struct {
 		name     string

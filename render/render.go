@@ -113,12 +113,95 @@ func Sparkline(values []float64) string {
 	return b.String()
 }
 
-// Series is one stack in a StackedVerticalBars chart — a labeled, colored
-// value-per-day slice. Stacks render bottom-to-top in slice order.
+// Series is one bar group in a GroupedVerticalBars chart — a labeled, colored
+// value-per-day slice. One series renders one bar per column.
 type Series struct {
 	Name   string
 	Color  *color.Color
 	Values []float64
+}
+
+// barRows scales one value to a row count in [0,height] against the largest
+// single value in the chart. Any positive value keeps at least one row so small
+// days never vanish; zero (or a zero scale) draws nothing.
+func barRows(value, maxVal float64, height int) int {
+	if value <= 0 || maxVal <= 0 || height <= 0 {
+		return 0
+	}
+	r := int(math.Round(value / maxVal * float64(height)))
+	if r < 1 {
+		r = 1
+	}
+	if r > height {
+		r = height
+	}
+	return r
+}
+
+// barLayout is the per-column geometry GroupedVerticalBars draws with: bar width,
+// the gap inside a day's cluster, the cluster's visible width, the full column
+// stride, how often a label is printed, and which label set (full or short).
+type barLayout struct {
+	barW     int
+	innerGap int
+	groupW   int
+	colWidth int
+	every    int
+	labels   []string
+}
+
+// chooseBarLayout picks the richest layout whose columns fit usable width. It
+// walks a ladder from 2-wide bars with full labels down to 1-wide bars with
+// short labels; if even the densest non-overlapping form overflows, it drops the
+// inter-cluster gutter and thins labels so the chart still fits.
+func chooseBarLayout(cols int, full, short []string, nSeries, usable int) barLayout {
+	if nSeries < 1 {
+		nSeries = 1
+	}
+	type cand struct {
+		barW, innerGap int
+		labels         []string
+	}
+	ladder := []cand{
+		{2, 1, full},
+		{2, 1, short},
+		{1, 1, short},
+		{1, 0, short},
+	}
+	for _, c := range ladder {
+		groupW := nSeries*c.barW + (nSeries-1)*c.innerGap
+		colWidth := groupW + 1
+		if lw := maxLen(c.labels) + 1; lw > colWidth {
+			colWidth = lw
+		}
+		if cols*colWidth <= usable {
+			return barLayout{c.barW, c.innerGap, groupW, colWidth, 1, c.labels}
+		}
+	}
+
+	groupW := nSeries
+	colWidth := groupW + 1
+	if cols*colWidth > usable {
+		colWidth = groupW
+	}
+	if colWidth < 1 {
+		colWidth = 1
+	}
+	every := 1
+	if lw := maxLen(short); lw >= colWidth {
+		every = lw/colWidth + 1
+	}
+	return barLayout{1, 0, groupW, colWidth, every, short}
+}
+
+func maxLen(ss []string) int {
+	m := 0
+	for _, s := range ss {
+		if len(s) > m {
+			m = len(s)
+		}
+	}
+	return m
 }
 
 // StackedVerticalBars draws the solid-block bar chart, but each day's bar is
