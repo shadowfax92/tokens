@@ -56,7 +56,7 @@ tokens growth --days 14 # last 14 days vs previous 14 days
 | `tokens today` | Today only, compact and pipe-friendly; add `--days N` for a daily window |
 | `tokens claude` (`cc`) | Claude Code: today, week, month, all-time, sparkline |
 | `tokens codex` (`cx`) | Codex: same shape |
-| `tokens chart` | Full-size daily bar charts for tokens and cost; add `-d` for token breakdowns |
+| `tokens chart` | Full-size daily bar charts for tokens and cost, split by tool (Claude vs Codex); add `-d` for per-tool token breakdowns |
 | `tokens growth` | Day/week/month deltas, or `--days N` to compare a rolling window |
 | `tokens raw` (`table`) | Tabular daily breakdown — pipeable to `awk`, `column`, etc. |
 | `tokens refresh` | Bust the cache and re-fetch |
@@ -113,7 +113,7 @@ Compact, scriptable output — pipe it into anything. Add `--days N` to show one
 
 ## Full charts
 
-`tokens chart` opens up the sparklines into full vertical bar charts. Use `--days 30` for a longer window, and `-d` to add per-day input/output/cache rows:
+`tokens chart` opens up the sparklines into full vertical bar charts. Each day's bar is stacked by tool — **Claude Code in cyan on the bottom, Codex in green on top** — so the bar height stays the daily total while the colors show the split; a legend and per-tool totals sit alongside. Use `--days 30` for a longer window, and `-d` to add per-tool input/output/cache rows. (When only one tool has data, it renders as a single-color chart.)
 
 <div align="center">
 
