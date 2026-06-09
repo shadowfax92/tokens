@@ -3,6 +3,8 @@ package render
 import (
 	"fmt"
 	"math"
+	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -11,16 +13,30 @@ import (
 )
 
 var (
-	Bold      = color.New(color.Bold)
-	Dim       = color.New(color.Faint)
-	Cyan      = color.New(color.FgCyan)
-	CyanBold  = color.New(color.FgCyan, color.Bold)
-	Green     = color.New(color.FgGreen)
-	GreenBold = color.New(color.FgGreen, color.Bold)
-	Magenta   = color.New(color.FgMagenta)
-	Yellow    = color.New(color.FgYellow)
-	Red       = color.New(color.FgRed, color.Bold)
+	Bold        = color.New(color.Bold)
+	Dim         = color.New(color.Faint)
+	Cyan        = color.New(color.FgCyan)
+	CyanBold    = color.New(color.FgCyan, color.Bold)
+	Green       = color.New(color.FgGreen)
+	GreenBold   = color.New(color.FgGreen, color.Bold)
+	Magenta     = color.New(color.FgMagenta)
+	MagentaBold = color.New(color.FgMagenta, color.Bold)
+	Yellow      = color.New(color.FgYellow)
+	Red         = color.New(color.FgRed, color.Bold)
 )
+
+// TermWidth reports the terminal's usable column count. It prefers the live tty
+// size (ioctl) and falls back to $COLUMNS, then 80, so non-tty contexts (pipes,
+// tests, SVG capture) and unsupported platforms stay deterministic.
+func TermWidth() int {
+	if w := osTermWidth(); w > 0 {
+		return w
+	}
+	if c, err := strconv.Atoi(os.Getenv("COLUMNS")); err == nil && c > 0 {
+		return c
+	}
+	return 80
+}
 
 func FormatTokens(n int64) string {
 	switch {
