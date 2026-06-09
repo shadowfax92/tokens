@@ -49,7 +49,7 @@ var chartCmd = &cobra.Command{
 		fmt.Println()
 
 		if detailed {
-			printChartBreakdown(providers, labels)
+			printChartBreakdown(providers, today)
 			fmt.Println()
 		}
 
@@ -136,15 +136,15 @@ func chartSummaryRow(c *color.Color, label, value, avg string) {
 	render.Dim.Printf("  · avg %s/day\n", avg)
 }
 
-func printChartBreakdown(providers []chartProvider, labels []string) {
+func printChartBreakdown(providers []chartProvider, today time.Time) {
 	render.Bold.Printf("Breakdown · last %d days\n", chartWindow(providers))
 	for _, p := range providers {
 		p.col.Printf("  %s\n", p.name)
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 		fmt.Fprintln(w, "    Day\tInput\tOutput\tCache")
-		for i, e := range p.filled {
+		for _, e := range p.filled {
 			fmt.Fprintf(w, "    %s\t%s\t%s\t%s\n",
-				labels[i],
+				render.DayLabel(e.Date, today),
 				render.FormatTokens(e.InputTokens),
 				render.FormatTokens(e.OutputTokens),
 				render.FormatTokens(e.CacheTokens))
