@@ -161,6 +161,10 @@ func renderTrends(data *ccusage.UsageData, today time.Time) {
 		float64(thisWeek.TotalTokens), float64(lastWeek.TotalTokens),
 		thisWeek.Cost, lastWeek.Cost)
 
+	fmt.Printf("  %-16s ", fmt.Sprintf("%d-day total", days))
+	render.Bold.Printf("%-10s   ", render.FormatTokens(totalTok))
+	render.GreenBold.Printf("%9s\n", render.FormatCost(totalCost))
+
 	fmt.Printf("  %-16s ", fmt.Sprintf("%d-day avg/day", days))
 	render.Bold.Printf("%-10s   ", render.FormatTokens(avgTok))
 	render.GreenBold.Printf("%9s\n", render.FormatCost(avgCost))
@@ -344,7 +348,7 @@ func init() {
 
 	rootCmd.PersistentFlags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
 	rootCmd.PersistentFlags().BoolVar(&noCache, "no-cache", false, "Bypass cache, force re-fetch")
-	rootCmd.PersistentFlags().IntVar(&days, "days", 0, "Window in days for charts, raw tables, sparklines, and explicit daily/growth views (default 14)")
+	rootCmd.PersistentFlags().IntVar(&days, "days", 0, "Window in days for dashboard totals, charts, raw tables, sparklines, and explicit daily/growth views (default 14)")
 	rootCmd.PersistentFlags().BoolVarP(&detailed, "detailed", "d", false, "Show input/output/cache breakdown")
 	rootCmd.SetUsageTemplate(usageTemplate)
 }
