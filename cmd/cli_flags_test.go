@@ -12,17 +12,36 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/nickhudkins/tokens/ccusage"
+	"github.com/nickhudkins/tokens/render"
 )
+
+func TestRootDashboardWithExplicitDaysShowsWindowTotal(t *testing.T) {
+	today := startOfDay(time.Now())
+	data := sampleUsageData(today)
+	out, err := runTokensWithCache(t, data, "--days", "10")
+	if err != nil {
+		t.Fatalf("tokens --days 10: %v\n%s", err, out)
+	}
+
+	current, _ := render.WindowTotals(render.CombineDaily(data), today, 10)
+	for _, want := range []string{"10-day total", render.FormatTokens(current.TotalTokens), render.FormatCost(current.Cost)} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("dashboard output missing %q:\n%s", want, out)
+		}
+	}
+}
 
 func TestTodayWithExplicitDaysRendersDailyWindow(t *testing.T) {
 	today := startOfDay(time.Now())
-	out, err := runTokensWithCache(t, sampleUsageData(today), "today", "--days", "5")
+	data := sampleUsageData(today)
+	out, err := runTokensWithCache(t, data, "today", "--days", "5")
 	if err != nil {
 		t.Fatalf("tokens today --days 5: %v\n%s", err, out)
 	}
 
 	start := today.AddDate(0, 0, -4).Format("Mon Jan 2")
-	for _, want := range []string{"Last 5 days", start, "Today"} {
+	current, _ := render.WindowTotals(render.CombineDaily(data), today, 5)
+	for _, want := range []string{"Last 5 days", start, "Today", "Window total", render.FormatTokens(current.TotalTokens), render.FormatCost(current.Cost)} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("output missing %q:\n%s", want, out)
 		}
@@ -32,6 +51,22 @@ func TestTodayWithExplicitDaysRendersDailyWindow(t *testing.T) {
 	}
 	if got := strings.Count(out, "Total"); got < 5 {
 		t.Fatalf("expected a daily total for each day, got %d totals:\n%s", got, out)
+	}
+}
+
+func TestToolDeepDiveShowsWindowTotal(t *testing.T) {
+	today := startOfDay(time.Now())
+	data := sampleUsageData(today)
+	out, err := runTokensWithCache(t, data, "codex", "--days", "5")
+	if err != nil {
+		t.Fatalf("tokens codex --days 5: %v\n%s", err, out)
+	}
+
+	current, _ := render.WindowTotals(data.Codex.Daily, today, 5)
+	for _, want := range []string{"Total " + render.FormatTokens(current.TotalTokens), render.FormatCost(current.Cost), "avg "} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("tool output missing %q:\n%s", want, out)
+		}
 	}
 }
 

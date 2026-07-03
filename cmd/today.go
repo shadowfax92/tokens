@@ -56,6 +56,10 @@ func renderTodayWindow(data *ccusage.UsageData, today time.Time, days int) {
 		render.Bold.Println(render.DayLabel(e.Date, today))
 		renderTodayRows(data, e.Date)
 	}
+
+	fmt.Println()
+	render.Bold.Println("Window total")
+	renderWindowTotalRows(data, today, days)
 }
 
 func renderTodayRows(data *ccusage.UsageData, date time.Time) {
@@ -93,6 +97,48 @@ func renderTodayRows(data *ccusage.UsageData, date time.Time) {
 	render.Bold.Printf("%-13s", "Total")
 	fmt.Printf(" %10s   ", render.FormatTokens(totalTok))
 	render.GreenBold.Printf("%9s\n", render.FormatCost(totalCost))
+}
+
+func renderWindowTotalRows(data *ccusage.UsageData, today time.Time, days int) {
+	var totalTok int64
+	var totalCost float64
+
+	emit := func(name string, usage *ccusage.ToolUsage, c *color.Color) {
+		entry := windowEntry(usage, today, days)
+		c.Printf("%-13s", name)
+		fmt.Printf(" %10s   ", render.FormatTokens(entry.TotalTokens))
+		render.Green.Printf("%9s\n", render.FormatCost(entry.Cost))
+		if detailed && entry.TotalTokens > 0 {
+			render.Dim.Printf("              in %s · out %s · cache %s\n",
+				render.FormatTokens(entry.InputTokens),
+				render.FormatTokens(entry.OutputTokens),
+				render.FormatTokens(entry.CacheTokens))
+		}
+		totalTok += entry.TotalTokens
+		totalCost += entry.Cost
+	}
+
+	if data.Claude != nil {
+		emit("Claude Code", data.Claude, render.CyanBold)
+	}
+	if data.Codex != nil {
+		emit("Codex", data.Codex, render.MagentaBold)
+	}
+
+	render.Dim.Printf("              %s   %s\n",
+		strings.Repeat("─", 10),
+		strings.Repeat("─", 9))
+	render.Bold.Printf("%-13s", "Total")
+	fmt.Printf(" %10s   ", render.FormatTokens(totalTok))
+	render.GreenBold.Printf("%9s\n", render.FormatCost(totalCost))
+}
+
+func windowEntry(usage *ccusage.ToolUsage, today time.Time, days int) ccusage.DailyEntry {
+	if usage == nil {
+		return ccusage.DailyEntry{}
+	}
+	current, _ := render.WindowTotals(usage.Daily, today, days)
+	return current
 }
 
 func init() {

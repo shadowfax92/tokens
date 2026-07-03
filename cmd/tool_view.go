@@ -74,7 +74,9 @@ func renderToolDeepDive(name string, usage *ccusage.ToolUsage) error {
 	}
 	avgTok := totalTok / int64(maxInt(1, len(filled)))
 	avgCost := totalCost / float64(maxInt(1, len(filled)))
-	render.Dim.Printf("  Avg %s/day · %s/day\n",
+	render.Dim.Printf("  Total %s · %s · avg %s/day · %s/day\n",
+		render.FormatTokens(totalTok),
+		render.FormatCost(totalCost),
 		render.FormatTokens(avgTok),
 		render.FormatCost(avgCost))
 
