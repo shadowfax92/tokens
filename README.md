@@ -121,7 +121,7 @@ Claude Code reports per-model cost directly. Codex currently reports cost at the
 
 ## Full charts
 
-`tokens chart` opens up the sparklines into full vertical bar charts. Each day shows **Claude Code (cyan) and Codex (magenta) as side-by-side bars**, so you can compare the two tools at a glance — both within a day and across the window. A legend and per-tool totals sit alongside, and each chart's title notes the window's peak day. The layout adapts to your terminal: wider bars with full date labels when there's room, compact bars with day-of-month labels when it's narrow. Use `--days 30` for a longer window, and `-d` to add per-tool input/output/cache rows. (When only one tool has data, it renders as a single series.)
+`tokens chart` opens up the sparklines into full vertical bar charts. By default, each day shows **Claude Code (cyan) and Codex (magenta) as side-by-side bars**, so you can compare the two tools at a glance — both within a day and across the window. Add `--by-model` (`-m`) to split the daily bars by model across both tools instead, with the legend and totals keyed to each model color. The layout adapts to your terminal: wider bars with full date labels when there's room, compact bars with day-of-month labels when it's narrow. Use `--days 30` for a longer window, and `-d` to add per-tool input/output/cache rows in the default tool view. (When only one tool or model has data, it renders as a single series.)
 
 <div align="center">
 
