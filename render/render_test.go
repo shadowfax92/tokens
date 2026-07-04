@@ -6,8 +6,10 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/fatih/color"
+	"github.com/nickhudkins/tokens/ccusage"
 )
 
 func captureStdout(t *testing.T, fn func()) string {
@@ -205,5 +207,72 @@ func TestGroupedVerticalBarsEmptyPrintsNone(t *testing.T) {
 	})
 	if !strings.Contains(out, "(none)") {
 		t.Fatalf("expected (none) for an all-zero series:\n%q", out)
+	}
+}
+
+func TestModelTotalsAggregatesWindowAndSortsDescending(t *testing.T) {
+	today := time.Date(2026, 7, 4, 0, 0, 0, 0, time.Local)
+	usage := &ccusage.ToolUsage{
+		Tool: "Claude Code",
+		Daily: []ccusage.DailyEntry{
+			{
+				Date: today.AddDate(0, 0, -3),
+				Models: []ccusage.ModelEntry{
+					{Model: "outside", TotalTokens: 1_000_000, Cost: 10},
+				},
+			},
+			{
+				Date: today.AddDate(0, 0, -2),
+				Models: []ccusage.ModelEntry{
+					{Model: "fable", InputTokens: 10, OutputTokens: 20, CacheTokens: 70, TotalTokens: 100, Cost: 1.25},
+					{Model: "haiku", InputTokens: 5, OutputTokens: 10, CacheTokens: 35, TotalTokens: 50, Cost: 0.50},
+				},
+			},
+			{
+				Date: today.AddDate(0, 0, -1),
+				Models: []ccusage.ModelEntry{
+					{Model: "haiku", InputTokens: 20, OutputTokens: 30, CacheTokens: 150, TotalTokens: 200, Cost: 2.00},
+					{Model: "alpha", TotalTokens: 25, Cost: 0.25},
+					{Model: "beta", TotalTokens: 25, Cost: 0.25},
+				},
+			},
+		},
+	}
+
+	got := ModelTotals(usage, today, 3)
+	wantModels := []string{"haiku", "fable", "alpha", "beta"}
+	if len(got) != len(wantModels) {
+		t.Fatalf("len(ModelTotals) = %d, want %d: %#v", len(got), len(wantModels), got)
+	}
+	for i, want := range wantModels {
+		if got[i].Model != want {
+			t.Fatalf("ModelTotals[%d].Model = %q, want %q: %#v", i, got[i].Model, want, got)
+		}
+	}
+
+	if got[0].InputTokens != 25 {
+		t.Errorf("haiku input = %d, want 25", got[0].InputTokens)
+	}
+	if got[0].OutputTokens != 40 {
+		t.Errorf("haiku output = %d, want 40", got[0].OutputTokens)
+	}
+	if got[0].CacheTokens != 185 {
+		t.Errorf("haiku cache = %d, want 185", got[0].CacheTokens)
+	}
+	if got[0].TotalTokens != 250 {
+		t.Errorf("haiku total = %d, want 250", got[0].TotalTokens)
+	}
+	if got[0].Cost != 2.50 {
+		t.Errorf("haiku cost = %v, want 2.50", got[0].Cost)
+	}
+}
+
+func TestModelTotalsEmptyInputs(t *testing.T) {
+	today := time.Date(2026, 7, 4, 0, 0, 0, 0, time.Local)
+	if got := ModelTotals(nil, today, 3); len(got) != 0 {
+		t.Fatalf("ModelTotals(nil) = %#v, want empty", got)
+	}
+	if got := ModelTotals(&ccusage.ToolUsage{}, today, 0); len(got) != 0 {
+		t.Fatalf("ModelTotals(days=0) = %#v, want empty", got)
 	}
 }

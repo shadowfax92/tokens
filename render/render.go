@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -446,6 +447,41 @@ func WindowTotals(entries []ccusage.DailyEntry, today time.Time, days int) (curr
 		}
 	}
 	return
+}
+
+func ModelTotals(usage *ccusage.ToolUsage, today time.Time, days int) []ccusage.ModelEntry {
+	if usage == nil || days <= 0 {
+		return nil
+	}
+
+	byModel := map[string]*ccusage.ModelEntry{}
+	for _, day := range FilterLastDays(usage.Daily, today, days) {
+		for _, model := range day.Models {
+			total, ok := byModel[model.Model]
+			if !ok {
+				entry := ccusage.ModelEntry{Model: model.Model}
+				total = &entry
+				byModel[model.Model] = total
+			}
+			total.InputTokens += model.InputTokens
+			total.OutputTokens += model.OutputTokens
+			total.CacheTokens += model.CacheTokens
+			total.TotalTokens += model.TotalTokens
+			total.Cost += model.Cost
+		}
+	}
+
+	out := make([]ccusage.ModelEntry, 0, len(byModel))
+	for _, total := range byModel {
+		out = append(out, *total)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].TotalTokens == out[j].TotalTokens {
+			return out[i].Model < out[j].Model
+		}
+		return out[i].TotalTokens > out[j].TotalTokens
+	})
+	return out
 }
 
 func addEntry(total *ccusage.DailyEntry, entry ccusage.DailyEntry) {
