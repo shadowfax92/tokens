@@ -43,6 +43,7 @@ This builds and copies `tokens` to `$GOPATH/bin/`.
 tokens                  # one-screen dashboard
 tokens today            # just today's numbers
 tokens today --days 5   # compact daily totals for the last 5 days
+tokens by-model         # per-model token and cost breakdown
 tokens claude           # Claude Code deep dive
 tokens chart --days 30  # full bar charts
 tokens growth --days 14 # last 14 days vs previous 14 days
@@ -54,6 +55,7 @@ tokens growth --days 14 # last 14 days vs previous 14 days
 |---------|-------------|
 | `tokens` | Default dashboard — today, window total, trends, sparklines |
 | `tokens today` | Today only, compact and pipe-friendly; add `--days N` for a daily window |
+| `tokens by-model` (`models`) | Per-model token and cost breakdown for the selected day window |
 | `tokens claude` (`cc`) | Claude Code: today, week, month, all-time, sparkline |
 | `tokens codex` (`cx`) | Codex: same shape |
 | `tokens chart` | Full-size daily bar charts for tokens and cost, split by tool (Claude vs Codex); add `-d` for per-tool token breakdowns |
@@ -90,6 +92,12 @@ Compact, scriptable output — pipe it into anything. Add `--days N` to show one
 ![tokens today](assets/today.svg)
 
 </div>
+
+## Per-model breakdown
+
+`tokens by-model` (alias `models`) shows token and cost totals grouped by model for the active `--days` window, split by Claude Code and Codex. Add `-d` to show input, output, and cache tokens under each model row.
+
+Claude Code reports per-model cost directly. Codex currently reports cost at the daily total level, so Codex per-model cost is allocated proportionally from the daily total by each model's share of total tokens.
 
 ## Per-tool deep dive
 

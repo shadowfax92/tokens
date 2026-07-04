@@ -162,6 +162,67 @@ func TestChartDetailedBreakdownIsPerProvider(t *testing.T) {
 	}
 }
 
+func TestByModelRendersModelsAndDetailedRows(t *testing.T) {
+	today := startOfDay(time.Now())
+	data := sampleUsageData(today)
+
+	out, err := runTokensWithCache(t, data, "by-model", "--days", "5")
+	if err != nil {
+		t.Fatalf("tokens by-model --days 5: %v\n%s", err, out)
+	}
+	start := today.AddDate(0, 0, -4).Format("Mon Jan 2")
+	for _, want := range []string{"By model · last 5 days", start, "Claude Code", "Codex", "fable-5", "haiku-4-5", "gpt-5.5", "subtotal", "Total"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("by-model output missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "claude-fable-5") || strings.Contains(out, "20251001") {
+		t.Fatalf("display output should use cleaned Claude model names:\n%s", out)
+	}
+
+	detailedOut, err := runTokensWithCache(t, data, "models", "--days", "5", "-d")
+	if err != nil {
+		t.Fatalf("tokens models --days 5 -d: %v\n%s", err, detailedOut)
+	}
+	for _, want := range []string{"By model · last 5 days", "in ", "out ", "cache "} {
+		if !strings.Contains(detailedOut, want) {
+			t.Fatalf("detailed by-model output missing %q:\n%s", want, detailedOut)
+		}
+	}
+}
+
+func TestByModelSingleProviderOmitsGrandTotal(t *testing.T) {
+	today := startOfDay(time.Now())
+	data := &ccusage.UsageData{Claude: sampleTool("Claude Code", today, 1_000_000)}
+
+	out, err := runTokensWithCache(t, data, "by-model", "--days", "5")
+	if err != nil {
+		t.Fatalf("tokens by-model (claude only): %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "Claude Code") || !strings.Contains(out, "subtotal") {
+		t.Fatalf("expected Claude section and subtotal:\n%s", out)
+	}
+	if strings.Contains(out, "Codex") {
+		t.Fatalf("did not expect absent Codex section:\n%s", out)
+	}
+	if strings.Contains(out, "Total") {
+		t.Fatalf("did not expect grand Total for a single provider:\n%s", out)
+	}
+}
+
+func TestByModelJSONKeepsRawModelNames(t *testing.T) {
+	today := startOfDay(time.Now())
+	out, err := runTokensWithCache(t, sampleUsageData(today), "by-model", "--json")
+	if err != nil {
+		t.Fatalf("tokens by-model --json: %v\n%s", err, out)
+	}
+	for _, want := range []string{`"models"`, `"model": "claude-fable-5"`, `"model": "claude-haiku-4-5-20251001"`} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("JSON output missing raw model field %q:\n%s", want, out)
+		}
+	}
+}
+
 func runTokensWithCache(t *testing.T, data *ccusage.UsageData, args ...string) (string, error) {
 	t.Helper()
 	resetCommandState(t)
@@ -240,7 +301,7 @@ func writeTestCache(t *testing.T, data *ccusage.UsageData) {
 		FetchedAt time.Time          `json:"fetched_at"`
 		Data      *ccusage.UsageData `json:"data"`
 	}{
-		Version:   1,
+		Version:   2,
 		FetchedAt: time.Now(),
 		Data:      data,
 	}
@@ -278,6 +339,7 @@ func sampleTool(name string, today time.Time, base int64) *ccusage.ToolUsage {
 			Cost:         float64(multiplier) * 1.25,
 		}
 		entry.TotalTokens = entry.InputTokens + entry.OutputTokens + entry.CacheTokens
+		entry.Models = sampleModels(name, entry)
 		usage.Daily = append(usage.Daily, entry)
 		usage.Total.InputTokens += entry.InputTokens
 		usage.Total.OutputTokens += entry.OutputTokens
@@ -286,4 +348,44 @@ func sampleTool(name string, today time.Time, base int64) *ccusage.ToolUsage {
 		usage.Total.Cost += entry.Cost
 	}
 	return usage
+}
+
+func sampleModels(tool string, entry ccusage.DailyEntry) []ccusage.ModelEntry {
+	halfInput := entry.InputTokens / 2
+	halfOutput := entry.OutputTokens / 2
+	halfCache := entry.CacheTokens / 2
+	halfTotal := halfInput + halfOutput + halfCache
+	halfCost := entry.Cost / 2
+
+	if tool == "Claude Code" {
+		return []ccusage.ModelEntry{
+			{
+				Model:        "claude-fable-5",
+				InputTokens:  halfInput,
+				OutputTokens: halfOutput,
+				CacheTokens:  halfCache,
+				TotalTokens:  halfTotal,
+				Cost:         halfCost,
+			},
+			{
+				Model:        "claude-haiku-4-5-20251001",
+				InputTokens:  entry.InputTokens - halfInput,
+				OutputTokens: entry.OutputTokens - halfOutput,
+				CacheTokens:  entry.CacheTokens - halfCache,
+				TotalTokens:  entry.TotalTokens - halfTotal,
+				Cost:         entry.Cost - halfCost,
+			},
+		}
+	}
+
+	return []ccusage.ModelEntry{
+		{
+			Model:        "gpt-5.5",
+			InputTokens:  entry.InputTokens,
+			OutputTokens: entry.OutputTokens,
+			CacheTokens:  entry.CacheTokens,
+			TotalTokens:  entry.TotalTokens,
+			Cost:         entry.Cost,
+		},
+	}
 }
