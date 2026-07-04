@@ -223,6 +223,16 @@ func TestByModelJSONKeepsRawModelNames(t *testing.T) {
 	}
 }
 
+func TestByModelJSONRequiresUsageData(t *testing.T) {
+	out, err := runTokensWithCache(t, &ccusage.UsageData{Errors: []string{"boom"}}, "by-model", "--json")
+	if err == nil {
+		t.Fatalf("tokens by-model --json with no tool data succeeded; output:\n%s", out)
+	}
+	if !strings.Contains(err.Error(), "could not fetch usage data") {
+		t.Fatalf("error = %v, want could not fetch usage data", err)
+	}
+}
+
 func runTokensWithCache(t *testing.T, data *ccusage.UsageData, args ...string) (string, error) {
 	t.Helper()
 	resetCommandState(t)

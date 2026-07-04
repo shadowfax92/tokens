@@ -20,14 +20,13 @@ var byModelCmd = &cobra.Command{
 	Annotations: map[string]string{"group": groupViews},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		res := fetchWithSpinner()
-		if jsonOutput {
-			return emitJSON(res)
-		}
-
 		data := res.Data
 		if data == nil || (data.Claude == nil && data.Codex == nil) {
 			printErrors(data)
 			return fmt.Errorf("could not fetch usage data")
+		}
+		if jsonOutput {
+			return emitJSON(res)
 		}
 		printErrors(data)
 
@@ -45,13 +44,14 @@ func renderByModel(data *ccusage.UsageData, today time.Time, days int) {
 		name  string
 		usage *ccusage.ToolUsage
 		color *color.Color
+		clean bool
 	}
 	var providers []provider
 	if data.Claude != nil {
-		providers = append(providers, provider{"Claude Code", data.Claude, render.CyanBold})
+		providers = append(providers, provider{"Claude Code", data.Claude, render.CyanBold, true})
 	}
 	if data.Codex != nil {
-		providers = append(providers, provider{"Codex", data.Codex, render.MagentaBold})
+		providers = append(providers, provider{"Codex", data.Codex, render.MagentaBold, false})
 	}
 
 	var grand ccusage.ModelEntry
@@ -60,7 +60,7 @@ func renderByModel(data *ccusage.UsageData, today time.Time, days int) {
 			fmt.Println()
 		}
 		p.color.Println(p.name)
-		subtotal := renderModelSection(p.usage, today, days)
+		subtotal := renderModelSection(p.usage, today, days, p.clean)
 		addModelEntry(&grand, subtotal)
 	}
 
@@ -73,11 +73,15 @@ func renderByModel(data *ccusage.UsageData, today time.Time, days int) {
 	}
 }
 
-func renderModelSection(usage *ccusage.ToolUsage, today time.Time, days int) ccusage.ModelEntry {
+func renderModelSection(usage *ccusage.ToolUsage, today time.Time, days int, cleanNames bool) ccusage.ModelEntry {
 	models := render.ModelTotals(usage, today, days)
 	var subtotal ccusage.ModelEntry
 	for _, model := range models {
-		printByModelRow(displayModelName(model.Model), model)
+		name := model.Model
+		if cleanNames {
+			name = displayModelName(name)
+		}
+		printByModelRow(name, model)
 		if detailed && model.TotalTokens > 0 {
 			render.Dim.Printf("  %-24s in %s · out %s · cache %s\n",
 				"",
