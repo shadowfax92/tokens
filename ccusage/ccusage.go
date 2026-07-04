@@ -4,17 +4,28 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
+	"sort"
 	"sync"
 	"time"
 )
 
+type ModelEntry struct {
+	Model        string  `json:"model"`
+	InputTokens  int64   `json:"input_tokens"`
+	OutputTokens int64   `json:"output_tokens"`
+	CacheTokens  int64   `json:"cache_tokens"`
+	TotalTokens  int64   `json:"total_tokens"`
+	Cost         float64 `json:"cost"`
+}
+
 type DailyEntry struct {
-	Date         time.Time `json:"date"`
-	InputTokens  int64     `json:"input_tokens"`
-	OutputTokens int64     `json:"output_tokens"`
-	CacheTokens  int64     `json:"cache_tokens"`
-	TotalTokens  int64     `json:"total_tokens"`
-	Cost         float64   `json:"cost"`
+	Date         time.Time    `json:"date"`
+	InputTokens  int64        `json:"input_tokens"`
+	OutputTokens int64        `json:"output_tokens"`
+	CacheTokens  int64        `json:"cache_tokens"`
+	TotalTokens  int64        `json:"total_tokens"`
+	Cost         float64      `json:"cost"`
+	Models       []ModelEntry `json:"models,omitempty"`
 }
 
 type ToolUsage struct {
@@ -38,6 +49,14 @@ type claudeResponse struct {
 		CacheReadTokens     int64   `json:"cacheReadTokens"`
 		TotalTokens         int64   `json:"totalTokens"`
 		TotalCost           float64 `json:"totalCost"`
+		ModelBreakdowns     []struct {
+			ModelName           string  `json:"modelName"`
+			InputTokens         int64   `json:"inputTokens"`
+			OutputTokens        int64   `json:"outputTokens"`
+			CacheCreationTokens int64   `json:"cacheCreationTokens"`
+			CacheReadTokens     int64   `json:"cacheReadTokens"`
+			Cost                float64 `json:"cost"`
+		} `json:"modelBreakdowns"`
 	} `json:"daily"`
 }
 
@@ -51,6 +70,15 @@ type codexResponse struct {
 		ReasoningOutputTokens int64   `json:"reasoningOutputTokens"`
 		TotalTokens           int64   `json:"totalTokens"`
 		CostUSD               float64 `json:"costUSD"`
+		Models                map[string]struct {
+			InputTokens           int64 `json:"inputTokens"`
+			CacheCreationTokens   int64 `json:"cacheCreationTokens"`
+			CacheReadTokens       int64 `json:"cacheReadTokens"`
+			OutputTokens          int64 `json:"outputTokens"`
+			ReasoningOutputTokens int64 `json:"reasoningOutputTokens"`
+			TotalTokens           int64 `json:"totalTokens"`
+			IsFallback            bool  `json:"isFallback"`
+		} `json:"models"`
 	} `json:"daily"`
 }
 
@@ -70,7 +98,7 @@ func runNpx(args ...string) ([]byte, error) {
 // (not bare `ccusage daily`, which now aggregates every detected agent and keys
 // each row by `period` instead of `date` — that shape parses to zero entries here).
 func fetchClaude() (*ToolUsage, error) {
-	out, err := runNpx("ccusage@latest", "claude", "daily", "--json")
+	out, err := runNpx("ccusage@latest", "claude", "daily", "--breakdown", "--json")
 	if err != nil {
 		return nil, err
 	}
@@ -97,6 +125,17 @@ func parseClaude(out []byte) (*ToolUsage, error) {
 			TotalTokens:  d.TotalTokens,
 			Cost:         d.TotalCost,
 		}
+		for _, m := range d.ModelBreakdowns {
+			cacheTokens := m.CacheCreationTokens + m.CacheReadTokens
+			entry.Models = append(entry.Models, ModelEntry{
+				Model:        m.ModelName,
+				InputTokens:  m.InputTokens,
+				OutputTokens: m.OutputTokens,
+				CacheTokens:  cacheTokens,
+				TotalTokens:  m.InputTokens + m.OutputTokens + cacheTokens,
+				Cost:         m.Cost,
+			})
+		}
 		usage.Daily = append(usage.Daily, entry)
 		usage.Total.InputTokens += entry.InputTokens
 		usage.Total.OutputTokens += entry.OutputTokens
@@ -112,7 +151,7 @@ func parseClaude(out []byte) (*ToolUsage, error) {
 // package as a subcommand; the old standalone `@ccusage/codex` package is
 // deprecated and just prints "use npx ccusage instead" to stderr (exit 1).
 func fetchCodex() (*ToolUsage, error) {
-	out, err := runNpx("ccusage@latest", "codex", "daily", "--json")
+	out, err := runNpx("ccusage@latest", "codex", "daily", "--breakdown", "--json")
 	if err != nil {
 		return nil, err
 	}
@@ -138,6 +177,32 @@ func parseCodex(out []byte) (*ToolUsage, error) {
 			CacheTokens:  d.CacheCreationTokens + d.CacheReadTokens,
 			TotalTokens:  d.TotalTokens,
 			Cost:         d.CostUSD,
+		}
+		var modelTotalTokens int64
+		for _, m := range d.Models {
+			modelTotalTokens += m.TotalTokens
+		}
+		names := make([]string, 0, len(d.Models))
+		for name := range d.Models {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			m := d.Models[name]
+			cost := 0.0
+			if modelTotalTokens > 0 {
+				// ccusage exposes Codex cost at the day level only, so split
+				// it by each model's total-token share.
+				cost = d.CostUSD * float64(m.TotalTokens) / float64(modelTotalTokens)
+			}
+			entry.Models = append(entry.Models, ModelEntry{
+				Model:        name,
+				InputTokens:  m.InputTokens,
+				OutputTokens: m.OutputTokens,
+				CacheTokens:  m.CacheCreationTokens + m.CacheReadTokens,
+				TotalTokens:  m.TotalTokens,
+				Cost:         cost,
+			})
 		}
 		usage.Daily = append(usage.Daily, entry)
 		usage.Total.InputTokens += entry.InputTokens

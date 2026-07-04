@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-const cacheVersion = 1
+const cacheVersion = 2
 
 type cacheFile struct {
 	Version   int        `json:"version"`
@@ -23,11 +23,11 @@ type FetchOptions struct {
 }
 
 type FetchResult struct {
-	Data       *UsageData
-	FromCache  bool
-	FetchedAt  time.Time
-	CacheAge   time.Duration
-	FetchTook  time.Duration
+	Data      *UsageData
+	FromCache bool
+	FetchedAt time.Time
+	CacheAge  time.Duration
+	FetchTook time.Duration
 }
 
 func cachePath() string {
