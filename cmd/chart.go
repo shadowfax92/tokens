@@ -26,6 +26,12 @@ var chartCmd = &cobra.Command{
 	Short:       "Full-size daily bar charts for tokens and cost",
 	Annotations: map[string]string{"group": groupViews},
 	RunE: func(cmd *cobra.Command, args []string) error {
+		byModel, err := cmd.Flags().GetBool("by-model")
+		if err != nil {
+			return err
+		}
+		defer resetChartByModelFlag(cmd)
+
 		res := fetchWithSpinner()
 		data := res.Data
 		if data == nil || (data.Claude == nil && data.Codex == nil) {
@@ -42,23 +48,29 @@ var chartCmd = &cobra.Command{
 		fullLabels, shortLabels := chartLabels(today, days)
 		width := render.TermWidth()
 
-		printChartLegend(providers)
-
 		tokSeries := seriesFor(providers, tokensValue)
+		costSeries := seriesFor(providers, costValue)
+		if byModel {
+			tokSeries, costSeries = render.ModelSeries(data, today, days)
+			cleanModelSeriesNames(tokSeries)
+			cleanModelSeriesNames(costSeries)
+		}
+
+		printChartLegend(tokSeries)
+
 		render.Bold.Printf("Tokens · last %d days%s\n", days, peakSuffix(tokSeries, formatTokensFloat))
 		render.GroupedVerticalBars(tokSeries, fullLabels, shortLabels, width)
-		printChartSummary(providers, tokensValue, formatTokensFloat)
+		printChartSummary(tokSeries, formatTokensFloat)
 		fmt.Println()
 
-		if detailed {
+		if detailed && !byModel {
 			printChartBreakdown(providers, today)
 			fmt.Println()
 		}
 
-		costSeries := seriesFor(providers, costValue)
 		render.Bold.Printf("Cost · last %d days%s\n", days, peakSuffix(costSeries, render.FormatCost))
 		render.GroupedVerticalBars(costSeries, fullLabels, shortLabels, width)
-		printChartSummary(providers, costValue, render.FormatCost)
+		printChartSummary(costSeries, render.FormatCost)
 
 		return nil
 	},
@@ -123,32 +135,38 @@ func seriesFor(providers []chartProvider, value func(ccusage.DailyEntry) float64
 	return series
 }
 
-// printChartLegend keys the bar colors once at the top — only when both tools
-// are present (a single provider needs no key).
-func printChartLegend(providers []chartProvider) {
-	if len(providers) < 2 {
+func cleanModelSeriesNames(series []render.Series) {
+	for i := range series {
+		series[i].Name = displayModelName(series[i].Name)
+	}
+}
+
+// printChartLegend keys the bar colors once at the top. A single series needs
+// no key.
+func printChartLegend(series []render.Series) {
+	if len(series) < 2 {
 		return
 	}
 	fmt.Print("  ")
-	for i, p := range providers {
+	for i, s := range series {
 		if i > 0 {
 			fmt.Print("   ")
 		}
-		p.col.Printf("██ %s", p.name)
+		s.Color.Printf("██ %s", s.Name)
 	}
 	fmt.Println()
 	fmt.Println()
 }
 
-func printChartSummary(providers []chartProvider, value func(ccusage.DailyEntry) float64, format func(float64) string) {
-	n := chartWindow(providers)
+func printChartSummary(series []render.Series, format func(float64) string) {
+	n := seriesWindow(series)
 	var grand float64
-	for _, p := range providers {
-		sum := sumValues(p.filled, value)
+	for _, s := range series {
+		sum := sumSeriesValues(s.Values)
 		grand += sum
-		chartSummaryRow(p.col, p.name, format(sum), format(sum/float64(maxInt(1, n))))
+		chartSummaryRow(s.Color, s.Name, format(sum), format(sum/float64(maxInt(1, n))))
 	}
-	if len(providers) > 1 {
+	if len(series) > 1 {
 		chartSummaryRow(nil, "Total", format(grand), format(grand/float64(maxInt(1, n))))
 	}
 }
@@ -187,14 +205,31 @@ func chartWindow(providers []chartProvider) int {
 	return len(providers[0].filled)
 }
 
-func sumValues(entries []ccusage.DailyEntry, value func(ccusage.DailyEntry) float64) float64 {
+func seriesWindow(series []render.Series) int {
+	if len(series) == 0 {
+		return 0
+	}
+	return len(series[0].Values)
+}
+
+func sumSeriesValues(values []float64) float64 {
 	var s float64
-	for _, e := range entries {
-		s += value(e)
+	for _, v := range values {
+		s += v
 	}
 	return s
 }
 
+func resetChartByModelFlag(cmd *cobra.Command) {
+	flag := cmd.Flags().Lookup("by-model")
+	if flag == nil {
+		return
+	}
+	_ = flag.Value.Set("false")
+	flag.Changed = false
+}
+
 func init() {
+	chartCmd.Flags().BoolP("by-model", "m", false, "Split chart bars by model instead of tool")
 	rootCmd.AddCommand(chartCmd)
 }
