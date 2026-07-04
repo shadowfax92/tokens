@@ -26,6 +26,17 @@ var (
 	Red         = color.New(color.FgRed, color.Bold)
 )
 
+var ModelPalette = []*color.Color{
+	color.New(color.FgCyan, color.Bold),
+	color.New(color.FgMagenta, color.Bold),
+	color.New(color.FgGreen, color.Bold),
+	color.New(color.FgYellow, color.Bold),
+	color.New(color.FgBlue, color.Bold),
+	color.New(color.FgRed, color.Bold),
+	color.New(color.FgHiCyan, color.Bold),
+	color.New(color.FgHiMagenta, color.Bold),
+}
+
 // TermWidth reports the terminal's usable column count. It prefers the live tty
 // size (ioctl) and falls back to $COLUMNS, then 80, so non-tty contexts (pipes,
 // tests, SVG capture) and unsupported platforms stay deterministic.
@@ -482,6 +493,77 @@ func ModelTotals(usage *ccusage.ToolUsage, today time.Time, days int) []ccusage.
 		return out[i].TotalTokens > out[j].TotalTokens
 	})
 	return out
+}
+
+type modelSeriesValues struct {
+	name        string
+	tokenVals   []float64
+	costVals    []float64
+	totalTokens int64
+}
+
+func ModelSeries(data *ccusage.UsageData, today time.Time, days int) (tokenSeries, costSeries []Series) {
+	if data == nil || days <= 0 {
+		return nil, nil
+	}
+
+	slotByDate := make(map[string]int, days)
+	for i := 0; i < days; i++ {
+		date := today.AddDate(0, 0, -(days - 1 - i))
+		slotByDate[date.Format("2006-01-02")] = i
+	}
+
+	byModel := map[string]*modelSeriesValues{}
+	add := func(usage *ccusage.ToolUsage) {
+		if usage == nil {
+			return
+		}
+		for _, day := range usage.Daily {
+			slot, ok := slotByDate[day.Date.Format("2006-01-02")]
+			if !ok {
+				continue
+			}
+			for _, model := range day.Models {
+				values, ok := byModel[model.Model]
+				if !ok {
+					values = &modelSeriesValues{
+						name:      model.Model,
+						tokenVals: make([]float64, days),
+						costVals:  make([]float64, days),
+					}
+					byModel[model.Model] = values
+				}
+				values.tokenVals[slot] += float64(model.TotalTokens)
+				values.costVals[slot] += model.Cost
+				values.totalTokens += model.TotalTokens
+			}
+		}
+	}
+	add(data.Claude)
+	add(data.Codex)
+
+	models := make([]*modelSeriesValues, 0, len(byModel))
+	for _, values := range byModel {
+		models = append(models, values)
+	}
+	sort.Slice(models, func(i, j int) bool {
+		if models[i].totalTokens == models[j].totalTokens {
+			return models[i].name < models[j].name
+		}
+		return models[i].totalTokens > models[j].totalTokens
+	})
+
+	tokenSeries = make([]Series, len(models))
+	costSeries = make([]Series, len(models))
+	for i, values := range models {
+		col := Dim
+		if len(ModelPalette) > 0 {
+			col = ModelPalette[i%len(ModelPalette)]
+		}
+		tokenSeries[i] = Series{Name: values.name, Color: col, Values: values.tokenVals}
+		costSeries[i] = Series{Name: values.name, Color: col, Values: values.costVals}
+	}
+	return tokenSeries, costSeries
 }
 
 func addEntry(total *ccusage.DailyEntry, entry ccusage.DailyEntry) {
