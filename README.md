@@ -101,7 +101,7 @@ Claude Code reports per-model cost directly. Codex currently reports cost at the
 
 ## Per-tool deep dive
 
-`tokens claude` (alias `cc`) and `tokens codex` (alias `cx`) zoom in on a single tool with this-week / this-month / all-time, plus a sparkline:
+`tokens claude` (alias `cc`) and `tokens codex` (alias `cx`) zoom in on a single tool with this-week / this-month / all-time, plus a sparkline and, when model data is available, a per-model breakdown for the active `--days` window. Add `-d` to show input, output, and cache tokens under each model row:
 
 <div align="center">
 

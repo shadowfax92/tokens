@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fatih/color"
 	"github.com/nickhudkins/tokens/ccusage"
 	"github.com/nickhudkins/tokens/render"
 )
@@ -79,6 +80,24 @@ func renderToolDeepDive(name string, usage *ccusage.ToolUsage) error {
 		render.FormatCost(totalCost),
 		render.FormatTokens(avgTok),
 		render.FormatCost(avgCost))
+
+	models := render.ModelTotals(usage, today, days)
+	if len(models) > 0 {
+		dimBold := color.New(color.Faint, color.Bold)
+		fmt.Println()
+		dimBold.Printf("Models · last %d days\n", days)
+		for _, model := range models {
+			render.Bold.Printf("  %-12s", displayModelName(model.Model))
+			fmt.Printf(" %10s   ", render.FormatTokens(model.TotalTokens))
+			render.Green.Printf("%9s\n", render.FormatCost(model.Cost))
+			if detailed {
+				render.Dim.Printf("               in %s · out %s · cache %s\n",
+					render.FormatTokens(model.InputTokens),
+					render.FormatTokens(model.OutputTokens),
+					render.FormatTokens(model.CacheTokens))
+			}
+		}
+	}
 
 	return nil
 }
